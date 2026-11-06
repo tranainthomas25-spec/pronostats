@@ -20,6 +20,10 @@
 .ring b small{font-size:14px}
 .ring.sm{width:52px;height:52px}.ring.sm::before{inset:5px}.ring.sm b{font-size:16px}.ring.sm b small{font-size:10px}
 .heros,.combos{display:grid;gap:12px}
+.md.hr{font:700 15px "Barlow Condensed",sans-serif;color:var(--gold2);min-width:44px;text-align:center}
+.sepj{padding:8px 4px 6px;font:700 13px "Barlow Condensed",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border-top:1px solid var(--line)}
+.sepj:first-child{border-top:0}
+.sepj{grid-column:1/-1}
 .bil-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin:10px 0 2px;padding:12px 14px;border-radius:14px;background:linear-gradient(160deg,#1B2643,#0F1729);border:1px solid rgba(212,175,55,.35);color:var(--text);text-align:left}
 .bil-btn b{color:var(--gold2);font:700 18px "Barlow Condensed",sans-serif}
 .bil-btn small{display:block;color:var(--muted);font-size:12px}
@@ -134,6 +138,8 @@
   const listeCourante = () => duJour().filter(x => compP === 'Tous' || x.comp === compP);
 
   /** Meilleure sélection de chaque match dans la fourchette du niveau choisi. */
+  let triSel = 'heure';
+  try { triSel = localStorage.getItem('ps_tri') || 'heure'; } catch (e) {}
   function selections(nv, liste) {
     const out = [];
     liste.forEach((x, i) => {
@@ -254,16 +260,26 @@
           ${ring(b.pdec, true)}</div>`).join('')}</div>`;
     }
 
-    h += `<h2 class="secth">🏆 Classement des sélections <small>${sels.length} match${sels.length > 1 ? 's' : ''}</small></h2>`;
+    const parHeure = triSel === 'heure';
+    const liste2 = parHeure ? sels.slice().sort((a, b) => a.x.date.localeCompare(b.x.date) || (b.p - a.p)) : sels.slice(0, 30);
+    h += `<h2 class="secth">🏆 ${parHeure ? 'Les sélections' : 'Classement des sélections'} <small>${sels.length} match${sels.length > 1 ? 's' : ''}</small></h2>
+      <div class="rk" style="margin:0 0 8px"><button class="rkb ${parHeure ? 'on' : ''}" data-tri="heure">🕐 Par heure</button><button class="rkb ${parHeure ? '' : 'on'}" data-tri="proba">📈 Par probabilité</button></div>`;
     if (!sels.length) h += `<div class="empty">Aucune sélection dans cette fourchette.<br>Essaie un autre niveau de risque.</div>`;
-    else h += `<div class="card group">${sels.slice(0, 30).map((s, k) => `
-      <div class="pk" data-pm="${s.i}" data-pk="${esc(s.m)}" style="${k ? 'border-top:1px solid var(--line)' : ''}">
-        <span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>
+    else {
+      let jourPrec = '';
+      h += `<div class="card group">${liste2.map((s, k) => {
+        const j = libJour(s.x.date), sep = parHeure && jourP !== 'auj' && j !== jourPrec;
+        jourPrec = j;
+        return `${sep ? `<div class="sepj">${esc(j)}</div>` : ''}
+      <div class="pk" data-pm="${s.i}" data-pk="${esc(s.m)}" style="${k && !sep ? 'border-top:1px solid var(--line)' : ''}">
+        ${parHeure ? `<span class="md n hr">${heure(s.x.date)}</span>` : `<span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>`}
         <div style="min-width:0"><div class="s">${esc(lib(s.m, s.x))}</div>
-          <div class="m">${esc(s.x.dom)} – ${esc(s.x.ext)} · ${libJour(s.x.date)} ${heure(s.x.date)}</div>
+          <div class="m">${esc(s.x.dom)} – ${esc(s.x.ext)} · ${parHeure ? esc(s.x.comp) : libJour(s.x.date) + ' ' + heure(s.x.date)}</div>
           ${faible(s.x) ? '<div class="w">⚠ Échantillon faible</div>' : ''}
           <div class="bar"><i style="width:${pct(s.p)}%"></i></div></div>
-        ${ring(s.p, true)}</div>`).join('')}</div>`;
+        ${ring(s.p, true)}</div>`;
+      }).join('')}</div>`;
+    }
     h += `<p class="disc">Probabilités estimées par le même modèle que ton tableau (loi de Poisson, non calibré).<br>Ce sont des tendances, pas des certitudes : une sélection n'a de valeur que si la cote dépasse la « cote juste ».</p>`;
     return h;
   }
@@ -385,6 +401,8 @@
   $('#view').addEventListener('click', e => {
     if (tab !== 'pronos') return;
     if (e.target.closest('[data-bilan]')) { ficheBilan(); return; }
+    const tr = e.target.closest('[data-tri]');
+    if (tr) { triSel = tr.dataset.tri; try { localStorage.setItem('ps_tri', triSel); } catch (err) {} rendre(); return; }
     const n = e.target.closest('[data-niv]');
     if (n) { niveau = n.dataset.niv; try { localStorage.setItem('ps_niveau', niveau); } catch (er) {} rendre(); return; }
     const jr = e.target.closest('[data-jour]');
