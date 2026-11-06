@@ -3,9 +3,43 @@
 (function () {
   const LIGUES = {
     'fra.2': { nom: 'Ligue 2', debut: 'aout' },
+    'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
+  const TSDB = 'https://www.thesportsdb.com/api/v1/json/123/';
+  const pause = ms => new Promise(r => setTimeout(r, ms));
+  const etatTsdb = s => /^(FT|AET|PEN|AP|Match Finished)$/i.test(s) ? 'F' : /^(NS|TBD|Not Started)$/i.test(s) || !s ? 'P'
+    : /^(PST|CANC|ABD|AWD|WO|SUSP|INT|Postponed|Cancelled)$/i.test(s) ? 'X' : 'L';
+  const saisonTsdb = () => { const n = new Date(), y = n.getFullYear(); return n.getMonth() >= 6 ? y + '-' + (y + 1) : (y - 1) + '-' + y; };
+
+  /* TheSportsDB : on charge la saison journée par journée ; les journées terminées restent en mémoire du téléphone. */
+  async function telechargerTsdb(code, lg) {
+    const id = code.split(':')[1], saison = saisonTsdb(), limite = Date.now() + 9 * 864e5;
+    if (lg.s !== saison) { lg.s = saison; lg.e = {}; lg.done = []; }
+    lg.done = lg.done || [];
+    for (let r = 1; r <= 50; r++) {
+      if (lg.done.indexOf(r) >= 0) continue;
+      let j;
+      try { j = await fetch(TSDB + 'eventsround.php?id=' + id + '&r=' + r + '&s=' + saison).then(x => x.ok ? x.json() : Promise.reject(x.status)); }
+      catch (e) { break; }
+      const evs = (j && j.events) || [];
+      if (!evs.length) break;
+      let premier = Infinity, fini = true;
+      evs.forEach(ev => {
+        const ts = ev.strTimestamp ? (/[Z+]/.test(ev.strTimestamp.slice(10)) ? ev.strTimestamp : ev.strTimestamp + 'Z')
+          : ev.dateEvent + 'T' + (ev.strTime || '00:00:00') + 'Z';
+        const d = new Date(ts), e = etatTsdb(ev.strStatus);
+        const h = ev.intHomeScore == null || ev.intHomeScore === '' ? null : +ev.intHomeScore, a = ev.intAwayScore == null || ev.intAwayScore === '' ? null : +ev.intAwayScore;
+        lg.e[ev.idEvent] = [d.toISOString(), e === 'P' && h != null && d < new Date() ? 'F' : e, ev.strHomeTeam, ev.strAwayTeam, h, a];
+        premier = Math.min(premier, +d);
+        if (lg.e[ev.idEvent][1] !== 'F' && lg.e[ev.idEvent][1] !== 'X') fini = false;
+      });
+      if (fini) lg.done.push(r);
+      if (premier > limite) break;
+      await pause(250);
+    }
+  }
   const URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
-  const CLE = 'ps_ligues_v1', DELAI = 30 * 60 * 1000;   // actualisation au plus toutes les 30 min
+  const CLE = 'ps_ligues_v2', DELAI = 30 * 60 * 1000;   // actualisation au plus toutes les 30 min
   const MARCHES = ['Over 1,5 match', 'Over 2,5 match', 'Over 3,5 match', 'Domicile Over 0,5', 'Domicile Over 1,5', 'Domicile Over 2,5',
     'Extérieur Over 0,5', 'Extérieur Over 1,5', 'Extérieur Over 2,5', 'Les deux équipes marquent – Oui', 'Les deux équipes marquent – Non',
     'Victoire domicile (1)', 'Match nul (N)', 'Victoire extérieur (2)', 'Double chance 1N', 'Double chance N2', 'Double chance 12'];
@@ -78,6 +112,7 @@
     const taches = [];
     Object.keys(LIGUES).forEach(code => {
       const lg = st[code] = st[code] || { e: {}, m: [] };
+      if (LIGUES[code].src === 'tsdb') { taches.push(telechargerTsdb(code, lg).catch(() => {})); return; }
       const mois = moisSaison(LIGUES[code].debut);
       Object.keys(lg.e).forEach(id => { if (lg.e[id][0].slice(0, 7).replace('-', '') < mois[0]) delete lg.e[id]; });
       lg.m = lg.m.filter(x => mois.indexOf(x) >= 0);

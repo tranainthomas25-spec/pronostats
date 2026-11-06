@@ -1,4 +1,4 @@
-const CACHE = 'pronostats-v5';
+const CACHE = 'pronostats-v6';
 const SHELL = ['./', 'index.html', 'pronos.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
