@@ -100,14 +100,14 @@
     'Victoire domicile (1)': 'Victoire {D}', 'Match nul (N)': 'Match nul', 'Victoire extérieur (2)': 'Victoire {E}',
     'Double chance 1N': '{D} ou nul', 'Double chance N2': '{E} ou nul', 'Double chance 12': 'Pas de nul',
   };
-  const TYPE = m => /^B:/.test(m) ? 'Buteur' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
+  const TYPE = m => /^B:/.test(m) ? 'Buteur' : /^P:/.test(m) ? 'Autre' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
     : /Double chance/.test(m) ? 'Double chance' : '1N2';
   const MARGE = 0.05, SUSPECT = 0.25;
   let niveau = 'sur', compP = 'Tous', jourP = 'auj';
   const JOURS = [{ id: 'auj', nom: "📅 Aujourd'hui", d: 0 }, { id: 'dem', nom: '⏭️ Demain', d: 1 }, { id: 'sem', nom: '🗓️ 7 jours', d: null }];
   try { niveau = localStorage.getItem('ps_niveau') || 'sur'; } catch (e) {}
 
-  const lib = (m, x) => /^B:/.test(m) ? m.slice(2) + ' buteur' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
+  const lib = (m, x) => /^B:/.test(m) ? m.slice(2) + ' buteur' : /^P:/.test(m) ? m.slice(2) + ' décisif (but ou passe)' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
   const pct = p => Math.round(p * 100);
   const cote = p => (1 / p).toFixed(2).replace('.', ',');
   const coteMin = p => (1 / p * (1 + MARGE)).toFixed(2).replace('.', ',');
@@ -134,20 +134,25 @@
   }
 
   /** Buteurs probables : taux de buts du joueur × (buts attendus de son équipe / moyenne de l'équipe). */
-  function buteursMatch(x) {
+  function joueursMatch(x) {
     const B = D.buteurs || [], out = [];
     [[x.dom, x.lD], [x.ext, x.lE]].forEach(([eq, lam]) => {
       const cl = (D.classements || []).find(c => c.comp === x.comp && c.equipe === eq);
       const moy = cl && cl.j ? cl.bp / cl.j : null;
       if (!lam || !moy) return;
-      B.filter(b => b.comp === x.comp && b.equipe === eq && b.matchs >= 3 && b.buts >= 2).forEach(b => {
-        const lp = Math.min(1.5, (b.buts / b.matchs) * (lam / moy));
-        out.push({ joueur: b.joueur, equipe: eq, buts: b.buts, matchs: b.matchs, pen: b.pen, p: 1 - Math.exp(-lp) });
+      const f = lam / moy;
+      B.filter(b => b.comp === x.comp && b.equipe === eq && b.matchs >= 3).forEach(b => {
+        const pd = b.pd || 0;
+        out.push({ joueur: b.joueur, equipe: eq, buts: b.buts, pd: pd, matchs: b.matchs, pen: b.pen,
+          p: b.buts >= 2 ? 1 - Math.exp(-Math.min(1.5, (b.buts / b.matchs) * f)) : null,
+          pdec: b.buts + pd >= 3 ? 1 - Math.exp(-Math.min(2, ((b.buts + pd) / b.matchs) * f)) : null });
       });
     });
-    return out.sort((a, b) => b.p - a.p);
+    return out;
   }
-  const probas = x => { const o = Object.assign({}, x.p); buteursMatch(x).forEach(b => o['B:' + b.joueur] = b.p); return o; };
+  const buteursMatch = x => joueursMatch(x).filter(j => j.p != null).sort((a, b) => b.p - a.p);
+  const decisifsMatch = x => joueursMatch(x).filter(j => j.pdec != null).sort((a, b) => b.pdec - a.pdec);
+  const probas = x => { const o = Object.assign({}, x.p); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
 
   function vuePronos() {
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
@@ -219,6 +224,21 @@
           ${ring(b.p, true)}</div>`).join('')}</div>`;
     }
 
+    const dc = [];
+    liste.forEach((x, i) => decisifsMatch(x).forEach(b => dc.push(Object.assign({ x: x, i: i }, b))));
+    dc.sort((a, b) => b.pdec - a.pdec);
+    if (dc.length) {
+      h += `<h2 class="secth">⚡ Les joueurs décisifs ${jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine'} <small>but ou passe décisive</small></h2>
+      <div class="card group">${dc.slice(0, 8).map((b, k) => `
+        <div class="pk" data-pm="${b.i}" data-pk="${esc('P:' + b.joueur)}" style="${k ? 'border-top:1px solid var(--line)' : ''}">
+          <span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>
+          <div style="min-width:0"><div class="s">${esc(b.joueur)}</div>
+            <div class="m">${esc(b.equipe)} · ${esc(b.x.dom)} – ${esc(b.x.ext)} · ${heure(b.x.date)}</div>
+            <div class="m">${b.buts} buts + ${b.pd} passes en ${b.matchs} matchs · cote juste ${cote(b.pdec)}</div>
+            <div class="bar"><i style="width:${pct(b.pdec)}%"></i></div></div>
+          ${ring(b.pdec, true)}</div>`).join('')}</div>`;
+    }
+
     h += `<h2 class="secth">🏆 Classement des sélections <small>${sels.length} match${sels.length > 1 ? 's' : ''}</small></h2>`;
     if (!sels.length) h += `<div class="empty">Aucune sélection dans cette fourchette.<br>Essaie un autre niveau de risque.</div>`;
     else h += `<div class="card group">${sels.slice(0, 30).map((s, k) => `
@@ -235,7 +255,7 @@
 
   /* ---------- Fiche match ---------- */
   function ficheMatch(x, focus) {
-    const P = probas(x), bts = buteursMatch(x);
+    const P = probas(x), bts = buteursMatch(x), dcs = decisifsMatch(x);
     const ordre = Object.keys(x.p).sort((a, b) => x.p[b] - x.p[a]);
     focus = focus && P[focus] != null ? focus : ordre[0];
     const ligne = m => `<div class="mk ${m === focus ? 'on' : ''}" data-mk="${esc(m)}"><span class="l">${esc(lib(m, x))}</span>
@@ -252,7 +272,9 @@
       <div id="vRes"></div>
       ${bts.length ? `<label style="margin-top:16px">⚽ Buteurs possibles (touche pour tester)</label>
       <div>${bts.slice(0, 10).map(b => ligne('B:' + b.joueur)).join('')}</div>
-      <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilité qu'il marque s'il est titulaire, d'après ses buts de la saison et les buts attendus de son équipe.</div>` : ''}
+      <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilités s'il est titulaire, d'après ses buts (et passes) de la saison et les buts attendus de son équipe.</div>` : ''}
+      ${dcs.length ? `<label style="margin-top:16px">⚡ Joueurs décisifs · but ou passe (touche pour tester)</label>
+      <div>${dcs.slice(0, 10).map(b => ligne('P:' + b.joueur)).join('')}</div>` : ''}
       <label style="margin-top:16px">Tous les marchés (touche pour tester)</label>
       <div>${ordre.map(ligne).join('')}</div>`);
     const sh = $('#sheet');
