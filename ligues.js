@@ -152,7 +152,8 @@
 
   async function telecharger(force, src) {
     const st = lire(), courant = ym(new Date()), cleT = 't_' + src;
-    if (!force && st[cleT] && Date.now() - st[cleT] < DELAI) return st;
+    const codes = Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src);
+    if (!force && st[cleT] && Date.now() - st[cleT] < DELAI && codes.every(c => st[c])) return st;   // championnat ajouté = on télécharge
     const taches = []; let incomplet = false;
     fusionnerPartiel = () => ecrire(st);   // garde en mémoire les journées déjà chargées
     Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src).forEach(code => {
