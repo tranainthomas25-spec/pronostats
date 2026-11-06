@@ -144,8 +144,12 @@
   }
 
   /* ---------- Fusion dans les données de l'appli ---------- */
+  let base = null;   // copie des données principales avant ajout, pour pouvoir refaire la fusion
   function fusionner(st) {
-    if (!D || D._ligues) return;
+    if (!D) return;
+    if (!D._ligues) base = JSON.stringify(D);
+    else if (base) D = JSON.parse(base);
+    else return;
     const now = new Date(), debut = new Date(now - 30 * 864e5), fin = new Date(+now + 7 * 864e5);
     Object.keys(LIGUES).forEach(code => {
       const lg = st[code]; if (!lg) return;
@@ -184,28 +188,30 @@
     rendre();
   }
 
-  let occupe = false;
+  let occupe = false, dernier = lire();   // dernières données connues : affichées tout de suite
   async function ajouter(force) {
     if (occupe) return;
     occupe = true;
     try {
       // 1) championnats rapides (ESPN) + ce qui est déjà en mémoire : affichage immédiat
       const st1 = await telecharger(force, 'espn');
-      fusionner(st1);
+      dernier = st1; fusionner(st1);
       // 2) championnats lents (TheSportsDB) en arrière-plan, puis on réaffiche
       const empreinte = st => JSON.stringify(Object.keys(LIGUES).filter(c => LIGUES[c].src === 'tsdb').map(c => st[c] && st[c].e));
       const avant = empreinte(st1);
       const st2 = await telecharger(force, 'tsdb');
-      if (empreinte(st2) !== avant) {
-        let base = null; try { base = JSON.parse(store.get('ps_cache')); } catch (e) {}
-        if (base) { D = base; fusionner(st2); }
-      }
+      dernier = st2;
+      if (empreinte(st2) !== avant) fusionner(st2);
     } catch (e) {} finally { occupe = false; }
   }
 
   // Après chaque chargement des données principales, on ajoute les championnats en plus.
   const chargerBase = charger;
-  charger = async function (silencieux) { await chargerBase(silencieux); await ajouter(!silencieux); };
+  charger = async function (silencieux) {
+    await chargerBase(silencieux);
+    if (D && !D._ligues && dernier) fusionner(dernier);   // affichage immédiat avec ce qu'on a déjà
+    ajouter(!silencieux);                                 // puis mise à jour en arrière-plan
+  };
   // Filet de sécurité : dès que de nouvelles données arrivent sans les championnats en plus, on les ajoute.
-  setInterval(() => { if (D && !D._ligues) ajouter(false); }, 1000);
+  setInterval(() => { if (D && !D._ligues) { if (dernier) fusionner(dernier); if (!occupe) ajouter(false); } }, 1000);
 })();
