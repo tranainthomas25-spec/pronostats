@@ -38,7 +38,7 @@
       });
       if (fini) lg.done.push(r);
       if (premier > limite) break;
-      await pause(2100);
+      await pause(700);
       if (fini) fusionnerPartiel();
     }
     return true;
@@ -112,12 +112,12 @@
     return out;
   }
 
-  async function telecharger(force) {
-    const st = lire(), courant = ym(new Date());
-    if (!force && st.t && Date.now() - st.t < DELAI) return st;
+  async function telecharger(force, src) {
+    const st = lire(), courant = ym(new Date()), cleT = 't_' + src;
+    if (!force && st[cleT] && Date.now() - st[cleT] < DELAI) return st;
     const taches = []; let incomplet = false;
     fusionnerPartiel = () => ecrire(st);   // garde en mémoire les journées déjà chargées
-    Object.keys(LIGUES).forEach(code => {
+    Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src).forEach(code => {
       const lg = st[code] = st[code] || { e: {}, m: [] };
       if (LIGUES[code].src === 'tsdb') { taches.push(telechargerTsdb(code, lg).then(ok => { if (!ok) incomplet = true; }).catch(() => { incomplet = true; })); return; }
       const mois = moisSaison(LIGUES[code].debut);
@@ -138,7 +138,7 @@
         }).catch(() => {})));
     });
     await Promise.all(taches);
-    st.t = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();   // si incomplet, on recommence dans 2 min
+    st[cleT] = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();   // si incomplet, on recommence dans 2 min
     ecrire(st);
     return st;
   }
@@ -188,7 +188,19 @@
   async function ajouter(force) {
     if (occupe) return;
     occupe = true;
-    try { fusionner(await telecharger(force)); } catch (e) {} finally { occupe = false; }
+    try {
+      // 1) championnats rapides (ESPN) + ce qui est déjà en mémoire : affichage immédiat
+      const st1 = await telecharger(force, 'espn');
+      fusionner(st1);
+      // 2) championnats lents (TheSportsDB) en arrière-plan, puis on réaffiche
+      const empreinte = st => JSON.stringify(Object.keys(LIGUES).filter(c => LIGUES[c].src === 'tsdb').map(c => st[c] && st[c].e));
+      const avant = empreinte(st1);
+      const st2 = await telecharger(force, 'tsdb');
+      if (empreinte(st2) !== avant) {
+        let base = null; try { base = JSON.parse(store.get('ps_cache')); } catch (e) {}
+        if (base) { D = base; fusionner(st2); }
+      }
+    } catch (e) {} finally { occupe = false; }
   }
 
   // Après chaque chargement des données principales, on ajoute les championnats en plus.
