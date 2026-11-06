@@ -55,6 +55,32 @@
 .disc{color:var(--muted);font-size:11.5px;text-align:center;margin:18px 6px 0;line-height:1.5}
 .secth{display:flex;justify-content:space-between;align-items:baseline}
 .secth small{color:var(--muted);font:500 12px Barlow;text-transform:none;letter-spacing:0}
+
+/* ---------- Tablette ---------- */
+@media (min-width:700px){
+  main{max-width:1180px;padding:4px 24px 40px}
+  #view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;align-items:start}
+  #view>*{grid-column:1/-1}
+  #view>article.card,#view>.card.pari{grid-column:auto}
+  .card.group:has(> .pk),.card.group:has(> .res){display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .card.group:has(> .pk)>.pk{border-top:0!important;border-bottom:1px solid var(--line)}
+  .ghead{grid-column:1/-1}
+  .res+.res{border-top:0}.res{border-bottom:1px solid var(--line)}
+  .kpis{grid-template-columns:repeat(4,1fr)}.kpi.hero{grid-column:span 2}
+  .hero .sel{font-size:32px}.ring{width:110px;height:110px}.ring b{font-size:30px}
+  .rkb{flex:1 1 0}
+  .veil{align-items:center}
+  .sheet{max-width:560px;border-radius:22px;border:1px solid rgba(212,175,55,.35);max-height:86vh;padding-bottom:22px}
+}
+@media (min-width:1000px){
+  #view{grid-template-columns:repeat(3,minmax(0,1fr))}
+  body{padding-bottom:0;padding-left:96px}
+  .tabs{top:0;bottom:0;right:auto;width:96px;height:100%;padding:0;grid-template-columns:none!important;grid-auto-rows:86px;align-content:center;border-top:0;border-right:1px solid var(--line)}
+  .tabs button.on::before{top:auto;left:0;width:3px;height:30px;border-radius:0 3px 3px 0}
+  .fab{bottom:28px;right:28px}
+  #toast{bottom:28px}
+  .kpis{grid-template-columns:repeat(6,1fr)}
+}
 `;
   const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
@@ -71,14 +97,14 @@
     'Victoire domicile (1)': 'Victoire {D}', 'Match nul (N)': 'Match nul', 'Victoire extérieur (2)': 'Victoire {E}',
     'Double chance 1N': '{D} ou nul', 'Double chance N2': '{E} ou nul', 'Double chance 12': 'Pas de nul',
   };
-  const TYPE = m => /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
+  const TYPE = m => /^B:/.test(m) ? 'Buteur' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
     : /Double chance/.test(m) ? 'Double chance' : '1N2';
   const MARGE = 0.05, SUSPECT = 0.25;
   let niveau = 'sur', compP = 'Tous', jourP = 'auj';
   const JOURS = [{ id: 'auj', nom: "📅 Aujourd'hui", d: 0 }, { id: 'dem', nom: '⏭️ Demain', d: 1 }, { id: 'sem', nom: '🗓️ 7 jours', d: null }];
   try { niveau = localStorage.getItem('ps_niveau') || 'sur'; } catch (e) {}
 
-  const lib = (m, x) => (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
+  const lib = (m, x) => /^B:/.test(m) ? m.slice(2) + ' buteur' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
   const pct = p => Math.round(p * 100);
   const cote = p => (1 / p).toFixed(2).replace('.', ',');
   const coteMin = p => (1 / p * (1 + MARGE)).toFixed(2).replace('.', ',');
@@ -103,6 +129,22 @@
     });
     return out.sort((a, b) => (faible(a.x) - faible(b.x)) || (b.p - a.p));
   }
+
+  /** Buteurs probables : taux de buts du joueur × (buts attendus de son équipe / moyenne de l'équipe). */
+  function buteursMatch(x) {
+    const B = D.buteurs || [], out = [];
+    [[x.dom, x.lD], [x.ext, x.lE]].forEach(([eq, lam]) => {
+      const cl = (D.classements || []).find(c => c.comp === x.comp && c.equipe === eq);
+      const moy = cl && cl.j ? cl.bp / cl.j : null;
+      if (!lam || !moy) return;
+      B.filter(b => b.comp === x.comp && b.equipe === eq && b.matchs >= 3 && b.buts >= 2).forEach(b => {
+        const lp = Math.min(1.5, (b.buts / b.matchs) * (lam / moy));
+        out.push({ joueur: b.joueur, equipe: eq, buts: b.buts, matchs: b.matchs, pen: b.pen, p: 1 - Math.exp(-lp) });
+      });
+    });
+    return out.sort((a, b) => b.p - a.p);
+  }
+  const probas = x => { const o = Object.assign({}, x.p); buteursMatch(x).forEach(b => o['B:' + b.joueur] = b.p); return o; };
 
   function vuePronos() {
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
@@ -144,6 +186,21 @@
         <button class="ghost" data-combo="1">+ Suivre ce combo dans Mes paris</button></div>`;
     }
 
+    const bt = [];
+    liste.forEach((x, i) => buteursMatch(x).forEach(b => bt.push(Object.assign({ x: x, i: i }, b))));
+    bt.sort((a, b) => b.p - a.p);
+    if (bt.length) {
+      h += `<h2 class="secth">⚽ Les buteurs ${jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine'} <small>s'il est titulaire</small></h2>
+      <div class="card group">${bt.slice(0, 8).map((b, k) => `
+        <div class="pk" data-pm="${b.i}" data-pk="${esc('B:' + b.joueur)}" style="${k ? 'border-top:1px solid var(--line)' : ''}">
+          <span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>
+          <div style="min-width:0"><div class="s">${esc(b.joueur)}</div>
+            <div class="m">${esc(b.equipe)} · ${esc(b.x.dom)} – ${esc(b.x.ext)} · ${heure(b.x.date)}</div>
+            <div class="m">${b.buts} buts en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''} · cote juste ${cote(b.p)}</div>
+            <div class="bar"><i style="width:${pct(b.p)}%"></i></div></div>
+          ${ring(b.p, true)}</div>`).join('')}</div>`;
+    }
+
     h += `<h2 class="secth">🏆 Classement des sélections <small>${sels.length} match${sels.length > 1 ? 's' : ''}</small></h2>`;
     if (!sels.length) h += `<div class="empty">Aucune sélection dans cette fourchette.<br>Essaie un autre niveau de risque.</div>`;
     else h += `<div class="card group">${sels.slice(0, 30).map((s, k) => `
@@ -160,24 +217,29 @@
 
   /* ---------- Fiche match ---------- */
   function ficheMatch(x, focus) {
+    const P = probas(x), bts = buteursMatch(x);
     const ordre = Object.keys(x.p).sort((a, b) => x.p[b] - x.p[a]);
-    focus = focus || ordre[0];
+    focus = focus && P[focus] != null ? focus : ordre[0];
+    const ligne = m => `<div class="mk ${m === focus ? 'on' : ''}" data-mk="${esc(m)}"><span class="l">${esc(lib(m, x))}</span>
+        <span class="v">${pct(P[m])} % <small style="color:var(--muted);font:500 11.5px Barlow">· ${cote(P[m])}</small></span>
+        <div class="bar"><i style="width:${pct(P[m])}%"></i></div></div>`;
     ouvrir(`<h3>${esc(x.dom)} – ${esc(x.ext)}</h3>
       <div style="color:var(--muted);margin:-8px 0 12px;font-size:13px">${esc(x.comp)} · ${libJour(x.date)} ${heure(x.date)} ${faible(x) ? '· ⚠ peu de matchs' : ''}</div>
       <div class="xg"><div><b>${fmt(x.lD && +x.lD.toFixed(2))}</b><small>buts attendus<br>${esc(x.dom)}</small></div>
         <div class="sc"><small>Score le + probable</small><b style="font-size:24px">${esc(x.score)}</b></div>
         <div><b>${fmt(x.lE && +x.lE.toFixed(2))}</b><small>buts attendus<br>${esc(x.ext)}</small></div></div>
-      <label>Tester une cote · ${esc(lib(focus, x))} (${pct(x.p[focus])} %)</label>
+      <label>Tester une cote · ${esc(lib(focus, x))} (${pct(P[focus])} %)</label>
       <div class="row2"><input id="vCote" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="Cote du bookmaker">
         <button class="primary" style="margin:0" id="vAdd">+ Mes paris</button></div>
       <div id="vRes"></div>
+      ${bts.length ? `<label style="margin-top:16px">⚽ Buteurs possibles (touche pour tester)</label>
+      <div>${bts.slice(0, 10).map(b => ligne('B:' + b.joueur)).join('')}</div>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilité qu'il marque s'il est titulaire, d'après ses buts de la saison et les buts attendus de son équipe.</div>` : ''}
       <label style="margin-top:16px">Tous les marchés (touche pour tester)</label>
-      <div>${ordre.map(m => `<div class="mk ${m === focus ? 'on' : ''}" data-mk="${esc(m)}"><span class="l">${esc(lib(m, x))}</span>
-        <span class="v">${pct(x.p[m])} % <small style="color:var(--muted);font:500 11.5px Barlow">· ${cote(x.p[m])}</small></span>
-        <div class="bar"><i style="width:${pct(x.p[m])}%"></i></div></div>`).join('')}</div>`);
+      <div>${ordre.map(ligne).join('')}</div>`);
     const sh = $('#sheet');
     const test = () => {
-      const c = parseFloat(String($('#vCote').value).replace(',', '.')), p = x.p[focus], r = $('#vRes');
+      const c = parseFloat(String($('#vCote').value).replace(',', '.')), p = P[focus], r = $('#vRes');
       if (!(c > 1)) { r.innerHTML = ''; return; }
       const ev = p * c - 1;
       r.innerHTML = ev > SUSPECT ? `<div class="verdict warn">⚠️ Écart très élevé (+${Math.round(ev * 100)} %) : vérifie la saisie, le bookmaker sait souvent quelque chose que le modèle ignore.</div>`
