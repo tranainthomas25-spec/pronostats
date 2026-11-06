@@ -20,6 +20,21 @@
 .ring b small{font-size:14px}
 .ring.sm{width:52px;height:52px}.ring.sm::before{inset:5px}.ring.sm b{font-size:16px}.ring.sm b small{font-size:10px}
 .heros,.combos{display:grid;gap:12px}
+.bil-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin:10px 0 2px;padding:12px 14px;border-radius:14px;background:linear-gradient(160deg,#1B2643,#0F1729);border:1px solid rgba(212,175,55,.35);color:var(--text);text-align:left}
+.bil-btn b{color:var(--gold2);font:700 18px "Barlow Condensed",sans-serif}
+.bil-btn small{display:block;color:var(--muted);font-size:12px}
+.bk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 4px}
+.bk>div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.bk b{display:block;font:700 26px "Barlow Condensed",sans-serif;color:var(--gold2)}
+.bk small{display:block;color:var(--muted);font-size:11.5px;line-height:1.3}
+.bt{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+.bt th{color:var(--muted);font-weight:600;font-size:11.5px;text-align:right;padding:6px 4px;border-bottom:1px solid var(--line)}
+.bt th:first-child,.bt td:first-child{text-align:left}
+.bt td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right}
+.bt .ok{color:#4ADE80}.bt .ko{color:#F87171}
+.hi{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.hi .r{font-size:16px}.hi .m{color:var(--muted);font-size:12px}
+.hi>div{flex:1;min-width:0}
 .hero .rang{display:inline-block;margin-right:6px}
 .combo{background:var(--surface);border:1px dashed rgba(212,175,55,.5);border-radius:18px;padding:14px}
 .combo h4{font:700 19px "Barlow Condensed",sans-serif;display:flex;justify-content:space-between;align-items:center}
@@ -158,7 +173,7 @@
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
     if (!futurs().length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
     const tous = duJour();
-    if (!tous.length) return jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
+    if (!tous.length) return resumeBilan() + jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
     const comps = [...new Set(tous.map(x => x.comp))];
     if (compP !== 'Tous' && !comps.includes(compP)) compP = 'Tous';
     const liste = tous.filter(x => compP === 'Tous' || x.comp === compP);
@@ -166,7 +181,7 @@
     const sels = selections(nv, liste);
     const fiables = sels.filter(s => !faible(s.x));
 
-    let h = jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
+    let h = resumeBilan() + jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
     h += chips(comps, compP, 'pcomp');
 
     const quand = jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine';
@@ -253,6 +268,57 @@
     return h;
   }
 
+  /* ---------- Bilan du modèle ---------- */
+  let bilPer = 'tout', bilComp = 'Tous';
+  const NOMNIV = { sur: '🛡️ Sûr', equi: '⚖️ Équilibré', audace: '🔥 Audacieux' };
+  function bilanSomme(filtre) {
+    const o = { n: 0, ok: 0, sp: 0 };
+    (D.bilan || []).filter(filtre).forEach(b => { o.n += b.n || 0; o.ok += b.ok || 0; o.sp += b.sp || 0; });
+    return o;
+  }
+  const tx = o => o.n ? Math.round(100 * o.ok / o.n) : null;
+  const txp = o => o.n ? Math.round(100 * o.sp / o.n) : null;
+  function resumeBilan() {
+    const o = bilanSomme(b => b.per === 'tout' && b.type === 'niv' && b.cle === 'sur');
+    if (!o.n) return '';
+    return `<button class="bil-btn" data-bilan="1"><div>📊 Bilan du modèle<small>${o.n} sélections « Sûr » rejouées cette saison</small></div><b>${tx(o)} % ✓</b></button>`;
+  }
+  function ficheBilan() {
+    const comps = [...new Set((D.bilan || []).map(b => b.comp))].sort();
+    if (bilComp !== 'Tous' && comps.indexOf(bilComp) < 0) bilComp = 'Tous';
+    const f = b => b.per === bilPer && (bilComp === 'Tous' || b.comp === bilComp);
+    const ligne = (lbl, o) => { const r = tx(o), pr = txp(o); return `<tr><td>${lbl}</td><td>${o.n}</td><td><b class="${r >= pr - 3 ? 'ok' : 'ko'}">${r} %</b></td><td>${pr} %</td></tr>`; };
+    let h = `<h3>📊 Bilan du modèle</h3>
+      <div style="color:var(--muted);font-size:12.5px;margin:-8px 0 10px">Chaque match déjà joué est rejoué avec uniquement les infos connues avant le coup d'envoi. On regarde ensuite si la sélection proposée est passée.</div>
+      <div class="rk" style="margin:0"><button class="rkb ${bilPer === 'tout' ? 'on' : ''}" data-bper="tout">Toute la saison</button><button class="rkb ${bilPer === '30j' ? 'on' : ''}" data-bper="30j">30 derniers jours</button></div>
+      <div class="chips" style="margin-top:8px">${['Tous'].concat(comps).map(c => `<button class="chip ${c === bilComp ? 'on' : ''}" data-bcomp="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+    const niv = ['sur', 'equi', 'audace'].map(n => [n, bilanSomme(b => f(b) && b.type === 'niv' && b.cle === n)]);
+    if (!niv.some(x => x[1].n)) return ouvrir(h + `<div class="empty">Pas encore assez de matchs joués pour ce choix.</div>`), lierBilan();
+    h += `<label style="margin-top:14px">Réussite par niveau (prévu par le modèle entre parenthèses)</label><div class="bk">${niv.map(([n, o]) =>
+      `<div><small>${NOMNIV[n]}</small><b>${o.n ? tx(o) + ' %' : '–'}</b><small>${o.n ? '(prévu ' + txp(o) + ' %)<br>' + o.ok + '/' + o.n + ' gagnées' : 'aucune'}</small></div>`).join('')}</div>`;
+    const mk = {};
+    (D.bilan || []).filter(b => f(b) && b.type === 'mk').forEach(b => { const o = mk[b.cle] = mk[b.cle] || { n: 0, ok: 0, sp: 0 }; o.n += b.n; o.ok += b.ok; o.sp += b.sp; });
+    const gen = { dom: 'Domicile', ext: 'Extérieur' };
+    h += `<label style="margin-top:16px">Par type de sélection</label><table class="bt"><tr><th>Sélection</th><th>Nb</th><th>Réussite</th><th>Prévu</th></tr>
+      ${Object.keys(mk).sort((a, b) => mk[b].n - mk[a].n).map(k => ligne(esc(lib(k, gen)), mk[k])).join('')}</table>`;
+    const cal = ['50', '60', '70', '80', '90'].map(c => [c, bilanSomme(b => f(b) && b.type === 'cal' && b.cle === c)]).filter(x => x[1].n);
+    h += `<label style="margin-top:16px">Les pourcentages sont-ils fiables ?</label>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:4px">Quand le modèle annonce X %, combien de fois c'est vraiment passé (tous marchés confondus).</div>
+      <table class="bt"><tr><th>Annoncé</th><th>Nb</th><th>Réel</th><th>Moyenne annoncée</th></tr>
+      ${cal.map(([c, o]) => ligne(c === '90' ? '90 % et +' : c + ' – ' + (+c + 9) + ' %', o)).join('')}</table>`;
+    const hi = (D.histo || []).filter(x => bilComp === 'Tous' || x.comp === bilComp).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 25);
+    if (hi.length) h += `<label style="margin-top:16px">Les derniers « bankers » (meilleure sélection de chaque match, 10 derniers jours)</label>
+      ${hi.map(x => `<div class="hi"><span class="r">${x.ok ? '✅' : '❌'}</span><div><div>${esc(lib(x.m, x))} · <b>${pct(x.p)} %</b></div>
+        <div class="m">${esc(x.dom)} ${esc(x.score)} ${esc(x.ext)} · ${esc(x.comp)} · ${libJour(x.date)}</div></div></div>`).join('')}`;
+    h += `<p class="disc" style="margin-top:14px">En vert : le modèle tient ses promesses (réussite ≥ prévu − 3 pts). En rouge : il est trop optimiste sur ce point.</p>`;
+    ouvrir(h); lierBilan();
+  }
+  function lierBilan() {
+    const sh = $('#sheet');
+    sh.querySelectorAll('[data-bper]').forEach(el => el.onclick = () => { bilPer = el.dataset.bper; ficheBilan(); });
+    sh.querySelectorAll('[data-bcomp]').forEach(el => el.onclick = () => { bilComp = el.dataset.bcomp; ficheBilan(); });
+  }
+
   /* ---------- Fiche match ---------- */
   function ficheMatch(x, focus) {
     const P = probas(x), bts = buteursMatch(x), dcs = decisifsMatch(x);
@@ -318,6 +384,7 @@
 
   $('#view').addEventListener('click', e => {
     if (tab !== 'pronos') return;
+    if (e.target.closest('[data-bilan]')) { ficheBilan(); return; }
     const n = e.target.closest('[data-niv]');
     if (n) { niveau = n.dataset.niv; try { localStorage.setItem('ps_niveau', niveau); } catch (er) {} rendre(); return; }
     const jr = e.target.closest('[data-jour]');
