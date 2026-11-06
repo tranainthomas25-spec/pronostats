@@ -3,6 +3,10 @@
 (function () {
   const LIGUES = {
     'fra.2': { nom: 'Ligue 2', debut: 'aout' },
+    'bel.1': { nom: 'Jupiler Pro League', debut: 'aout' },
+    'tur.1': { nom: 'Süper Lig', debut: 'aout' },
+    'sco.1': { nom: 'Premiership (Écosse)', debut: 'aout' },
+    'usa.1': { nom: 'MLS', debut: 'janv' },
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
   const TSDB = 'https://www.thesportsdb.com/api/v1/json/123/';
@@ -99,6 +103,40 @@
     return { lD: lD, lE: lE, score: best[0] + '-' + best[1], fiab: Math.min(a.n, b.n) < P.MJ_FAIBLE ? '⚠ Échantillon faible' : '✔ OK', p: p };
   }
 
+  /* ---------- Bilan du modèle (rejoué sur les matchs déjà joués, avec seulement les données d'avant) ---------- */
+  const NIV = [['sur', 0.75, 1.01], ['equi', 0.60, 0.75], ['audace', 0.45, 0.60]];
+  const gagne = (k, h, a) => [h + a > 1, h + a > 2, h + a > 3, h > 0, h > 1, h > 2, a > 0, a > 1, a > 2,
+    h > 0 && a > 0, !(h > 0 && a > 0), h > a, h === a, h < a, h >= a, h <= a, h !== a][k];
+  const memoBilan = {};
+  function bilanLigue(comp, term) {
+    const cle = comp + term.length + (term.length ? term[term.length - 1].date : '');
+    if (memoBilan[comp] && memoBilan[comp].cle === cle) return memoBilan[comp];
+    const now = Date.now(), il30 = now - 30 * 864e5, il10 = now - 10 * 864e5, agg = {}, hist = [];
+    const ajout = (per, type, c, ok, p) => { const k = per + '|' + type + '|' + c; const o = agg[k] = agg[k] || { comp: comp, per: per, type: type, cle: c, n: 0, ok: 0, sp: 0 }; o.n++; if (ok) o.ok++; o.sp += p; };
+    term.forEach((m, i) => {
+      const avant = term.slice(0, i).filter(x => x.date < m.date);
+      if (avant.length < P.MIN_LIGUE) return;
+      const pr = profils(avant), L = avant.reduce((s, x) => s + x.h + x.a, 0) / (2 * avant.length);
+      const r = prono(pr[m.dom], pr[m.ext], L);
+      if (!r) return;
+      const probs = MARCHES.map(k => r.p[k]), t = +new Date(m.date), pers = t >= il30 ? ['tout', '30j'] : ['tout'];
+      let meil = -1;
+      probs.forEach((p, k) => {
+        if (meil < 0 || p > probs[meil]) meil = k;
+        if (p >= 0.5) pers.forEach(per => ajout(per, 'cal', String(Math.min(9, Math.floor(p * 10)) * 10), gagne(k, m.h, m.a), p));
+      });
+      NIV.forEach(([niv, mn, mx]) => {
+        let b = -1;
+        probs.forEach((p, k) => { if (p >= mn && p < mx && (b < 0 || p > probs[b])) b = k; });
+        if (b < 0) return;
+        const ok = gagne(b, m.h, m.a);
+        pers.forEach(per => { ajout(per, 'niv', niv, ok, probs[b]); ajout(per, 'mk', MARCHES[b], ok, probs[b]); });
+      });
+      if (t >= il10) hist.push({ date: m.date, comp: comp, dom: m.dom, ext: m.ext, score: m.h + '-' + m.a, m: MARCHES[meil], p: probs[meil], ok: gagne(meil, m.h, m.a) });
+    });
+    return (memoBilan[comp] = { cle: cle, agg: Object.values(agg), hist: hist });
+  }
+
   /* ---------- Téléchargement (mois passés gardés en mémoire du téléphone) ---------- */
   const lire = () => { try { return JSON.parse(localStorage.getItem(CLE)) || {}; } catch (e) { return {}; } };
   const ecrire = o => { try { localStorage.setItem(CLE, JSON.stringify(o)); } catch (e) {} };
@@ -138,7 +176,8 @@
         }).catch(() => {})));
     });
     await Promise.all(taches);
-    st[cleT] = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();   // si incomplet, on recommence dans 2 min
+    st[cleT] = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();
+    st['inc_' + src] = incomplet;   // si incomplet, on recommence dans 2 min
     ecrire(st);
     return st;
   }
@@ -159,6 +198,7 @@
       const term = ms.filter(m => m.s === 'F' && m.h != null && m.a != null);
       if (!term.length) return;
       const pr = profils(term);
+      try { const b = bilanLigue(comp, term); D.bilan = (D.bilan || []).concat(b.agg); D.histo = (D.histo || []).concat(b.hist); } catch (e) {}
       const L = term.length >= P.MIN_LIGUE ? term.reduce((s, m) => s + m.h + m.a, 0) / (2 * term.length) : P.L_DEFAUT;
       const tab = Object.keys(pr).map(eq => {
         const l = term.filter(m => m.dom === eq || m.ext === eq);
@@ -202,6 +242,7 @@
       const st2 = await telecharger(force, 'tsdb');
       dernier = st2;
       if (empreinte(st2) !== avant) fusionner(st2);
+      if (st2.inc_tsdb) setTimeout(() => ajouter(false), 150000);   // source limitée : on réessaie tout seul dans 2 min 30
     } catch (e) {} finally { occupe = false; }
   }
 
