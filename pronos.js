@@ -19,6 +19,8 @@
 .ring b{position:relative;font:700 26px "Barlow Condensed",sans-serif;color:var(--gold2)}
 .ring b small{font-size:14px}
 .ring.sm{width:52px;height:52px}.ring.sm::before{inset:5px}.ring.sm b{font-size:16px}.ring.sm b small{font-size:10px}
+.heros,.combos{display:grid;gap:12px}
+.hero .rang{display:inline-block;margin-right:6px}
 .combo{background:var(--surface);border:1px dashed rgba(212,175,55,.5);border-radius:18px;padding:14px}
 .combo h4{font:700 19px "Barlow Condensed",sans-serif;display:flex;justify-content:space-between;align-items:center}
 .combo h4 span{font:600 13px Barlow;color:var(--muted)}
@@ -58,6 +60,7 @@
 
 /* ---------- Tablette ---------- */
 @media (min-width:700px){
+  .heros,.combos{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
   main{max-width:1180px;padding:4px 24px 40px}
   #view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;align-items:start}
   #view>*{grid-column:1/-1}
@@ -161,29 +164,44 @@
     let h = jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
     h += chips(comps, compP, 'pcomp');
 
-    const banker = fiables[0] || sels[0];
-    if (banker) {
-      const x = banker.x;
-      h += `<h2>${nv.id === 'sur' ? (jourP === 'auj' ? '🎯 Le banker du jour' : jourP === 'dem' ? '🎯 Le banker de demain' : '🎯 Le banker de la semaine') : nv.id === 'equi' ? '🎯 Le coup sûr… ou presque' : '🎯 Le coup de poker'}</h2>
-      <div class="hero" data-pm="${banker.i}" data-pk="${esc(banker.m)}">
-        <div><div class="tagline">${esc(x.comp)} · ${libJour(x.date)} ${heure(x.date)}</div>
-          <div class="sel">${esc(lib(banker.m, x))}</div>
+    const quand = jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine';
+    // 3 bankers sur 3 matchs différents (les fiables d'abord)
+    const bankers = [], vusB = new Set();
+    for (const s of [...fiables, ...sels.filter(x => faible(x.x))]) { if (vusB.has(s.i)) continue; vusB.add(s.i); bankers.push(s); if (bankers.length === 3) break; }
+    if (bankers.length) {
+      h += `<h2>${nv.id === 'sur' ? '🎯 Les bankers ' + quand : nv.id === 'equi' ? '🎯 Les coups sûrs… ou presque' : '🎯 Les coups de poker'}</h2><div class="heros">`;
+      bankers.forEach((bk, k) => {
+        const x = bk.x;
+        h += `<div class="hero" data-pm="${bk.i}" data-pk="${esc(bk.m)}">
+        <div><div class="tagline"><span class="rang">${['🥇', '🥈', '🥉'][k]}</span>${esc(x.comp)} · ${libJour(x.date)} ${heure(x.date)}</div>
+          <div class="sel">${esc(lib(bk.m, x))}</div>
           <div class="mt">${esc(x.dom)} – ${esc(x.ext)}</div>
-          <div class="odds"><span class="pill g">Cote juste ${cote(banker.p)}</span><span class="pill">Vise ≥ ${coteMin(banker.p)}</span>${faible(x) ? '<span class="pill">⚠ Peu de matchs</span>' : ''}</div>
-        </div>${ring(banker.p)}</div>`;
+          <div class="odds"><span class="pill g">Cote juste ${cote(bk.p)}</span><span class="pill">Vise ≥ ${coteMin(bk.p)}</span>${faible(x) ? '<span class="pill">⚠ Peu de matchs</span>' : ''}</div>
+        </div>${ring(bk.p)}</div>`;
+      });
+      h += `</div>`;
     }
 
-    const legs = []; const vus = new Set();
-    for (const s of fiables) { if (vus.has(s.i)) continue; vus.add(s.i); legs.push(s); if (legs.length === 3) break; }
-    if (legs.length >= 2) {
-      const pt = legs.reduce((a, s) => a * s.p, 1);
-      h += `<h2>🧩 Le combo ${jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine'}</h2><div class="combo">
-        <h4>${legs.length} sélections <span>3 matchs différents</span></h4>
+    // 2 combos de 3 matchs, sans match en commun
+    const combos = [], vus = new Set();
+    for (let c = 0; c < 2; c++) {
+      const legs = [];
+      for (const s of fiables) { if (vus.has(s.i)) continue; legs.push(s); vus.add(s.i); if (legs.length === 3) break; }
+      if (legs.length >= 2) combos.push(legs);
+    }
+    if (combos.length) {
+      h += `<h2>🧩 ${combos.length > 1 ? 'Les combos' : 'Le combo'} ${quand}</h2><div class="combos">`;
+      combos.forEach((legs, c) => {
+        const pt = legs.reduce((a, s) => a * s.p, 1);
+        h += `<div class="combo" data-cb="${c}">
+        <h4>Combo ${c ? '2 · plus audacieux' : '1 · le plus sûr'} <span>${legs.length} matchs différents</span></h4>
         ${legs.map((s, k) => `<div class="cleg" data-pm="${s.i}" data-pk="${esc(s.m)}"><i>${k + 1}</i>
           <div><div class="s">${esc(lib(s.m, s.x))}</div><div class="m">${esc(s.x.dom)} – ${esc(s.x.ext)} · ${heure(s.x.date)}</div></div>
           <span class="p">${pct(s.p)} %</span></div>`).join('')}
         <div class="ctot"><div><small>Chances (théoriques)</small><b>${pct(pt)} %</b></div><div><small>Cote juste du combo</small><b>${cote(pt)}</b></div></div>
-        <button class="ghost" data-combo="1">+ Suivre ce combo dans Mes paris</button></div>`;
+        <button class="ghost" data-combo="${c}">+ Suivre ce combo dans Mes paris</button></div>`;
+      });
+      h += `</div>`;
     }
 
     const bt = [];
@@ -285,7 +303,8 @@
     const c = e.target.closest('[data-pcomp]');
     if (c) { compP = c.dataset.pcomp; rendre(); return; }
     if (e.target.closest('[data-combo]')) {
-      const legs = [...$('#view').querySelectorAll('.cleg')].map(el => {
+      const cb = e.target.closest('[data-combo]').dataset.combo;
+      const legs = [...$('#view').querySelectorAll(`.combo[data-cb="${cb}"] .cleg`)].map(el => {
         const x = listeCourante()[+el.dataset.pm];
         return { x: x, m: el.dataset.pk };
       });
