@@ -1,5 +1,5 @@
-const CACHE = 'pronostats-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'pronostats-v2';
+const SHELL = ['./', 'index.html', 'pronos.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -9,8 +9,8 @@ self.addEventListener('activate', e => {
     .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
-// Fichiers de l'appli : affichés depuis le cache, puis rafraîchis en arrière-plan.
-// Les données (Google) passent toujours par le réseau.
+// Fichiers de l'appli : toujours la dernière version en ligne,
+// avec la copie en cache seulement si le téléphone est hors connexion.
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -18,9 +18,9 @@ self.addEventListener('fetch', e => {
   const memeSite = url.origin === location.origin;
   const polices = url.host.endsWith('fonts.googleapis.com') || url.host.endsWith('fonts.gstatic.com');
   if (!memeSite && !polices) return;
-  e.respondWith(caches.open(CACHE).then(async c => {
-    const enCache = await c.match(req);
-    const reseau = fetch(req).then(r => { if (r.ok || r.type === 'opaque') c.put(req, r.clone()); return r; }).catch(() => enCache);
-    return enCache || reseau;
-  }));
+  e.respondWith(
+    fetch(memeSite ? new Request(req.url, { cache: 'no-cache' }) : req)
+      .then(r => { if (r.ok || r.type === 'opaque') { const copie = r.clone(); caches.open(CACHE).then(c => c.put(req, copie)); } return r; })
+      .catch(() => caches.match(req))
+  );
 });
