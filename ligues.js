@@ -10,6 +10,9 @@
     'arg.1': { nom: 'Liga Profesional (Argentine)', debut: 'janv' },
     'col.1': { nom: 'Primera A (Colombie)', debut: 'janv' },
     'mex.1': { nom: 'Liga MX', debut: 'aout' },
+    'jpn.1': { nom: 'J1 League (Japon)', debut: 'aout' },
+    'aus.1': { nom: 'A-League (Australie)', debut: 'aout' },
+    'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
   const TSDB = 'https://www.thesportsdb.com/api/v1/json/123/';
@@ -20,7 +23,7 @@
 
   /* TheSportsDB : on charge la saison journée par journée ; les journées terminées restent en mémoire du téléphone. */
   async function telechargerTsdb(code, lg) {
-    const id = code.split(':')[1], saison = saisonTsdb(), limite = Date.now() + 9 * 864e5;
+    const id = code.split(':')[1], saison = LIGUES[code].saison === 'annee' ? String(new Date().getFullYear()) : saisonTsdb(), limite = Date.now() + 9 * 864e5;
     if (lg.s !== saison) { lg.s = saison; lg.e = {}; lg.done = []; }
     lg.done = lg.done || [];
     for (let r = 1; r <= 50; r++) {
@@ -157,11 +160,14 @@
     const st = lire(), courant = ym(new Date()), cleT = 't_' + src;
     const codes = Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src);
     if (!force && st[cleT] && Date.now() - st[cleT] < DELAI && codes.every(c => st[c])) return st;   // championnat ajouté = on télécharge
-    const taches = []; let incomplet = false;
+    const taches = []; let incomplet = false, chaine = Promise.resolve();
     fusionnerPartiel = () => ecrire(st);   // garde en mémoire les journées déjà chargées
     Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src).forEach(code => {
       const lg = st[code] = st[code] || { e: {}, m: [] };
-      if (LIGUES[code].src === 'tsdb') { taches.push(telechargerTsdb(code, lg).then(ok => { if (!ok) incomplet = true; }).catch(() => { incomplet = true; })); return; }
+      if (LIGUES[code].src === 'tsdb') {   // l'un après l'autre : la source gratuite limite le nombre de demandes
+        chaine = chaine.then(() => telechargerTsdb(code, lg)).then(ok => { if (!ok) incomplet = true; }).catch(() => { incomplet = true; });
+        return;
+      }
       const mois = moisSaison(LIGUES[code].debut);
       Object.keys(lg.e).forEach(id => { if (lg.e[id][0].slice(0, 7).replace('-', '') < mois[0]) delete lg.e[id]; });
       lg.m = lg.m.filter(x => mois.indexOf(x) >= 0);
@@ -179,6 +185,7 @@
           if (mo < courant && new Date().getDate() >= 3) lg.m.push(mo);
         }).catch(() => {})));
     });
+    taches.push(chaine);
     await Promise.all(taches);
     st[cleT] = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();
     st['inc_' + src] = incomplet;   // si incomplet, on recommence dans 2 min
