@@ -31,7 +31,7 @@
       let j = null;
       for (let essai = 0; essai < 3 && !j; essai++) {   // source gratuite limitée (~30 requêtes/min) : on patiente et on réessaie
         try { j = await fetch(TSDB + 'eventsround.php?id=' + id + '&r=' + r + '&s=' + saison).then(x => x.ok ? x.json() : Promise.reject(x.status)); }
-        catch (e) { await pause(15000); }
+        catch (e) { await pause(20000); }
       }
       if (!j) return false;
       const evs = (j && j.events) || [];
@@ -48,7 +48,7 @@
       });
       if (fini) lg.done.push(r);
       if (premier > limite) break;
-      await pause(700);
+      await pause(2500);   // ~24 demandes/min max (limite de la source gratuite)
       if (fini) fusionnerPartiel();
     }
     return true;
