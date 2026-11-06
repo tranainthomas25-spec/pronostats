@@ -74,7 +74,8 @@
   const TYPE = m => /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
     : /Double chance/.test(m) ? 'Double chance' : '1N2';
   const MARGE = 0.05, SUSPECT = 0.25;
-  let niveau = 'sur', compP = 'Tous';
+  let niveau = 'sur', compP = 'Tous', jourP = 'auj';
+  const JOURS = [{ id: 'auj', nom: "📅 Aujourd'hui", d: 0 }, { id: 'dem', nom: '⏭️ Demain', d: 1 }, { id: 'sem', nom: '🗓️ 7 jours', d: null }];
   try { niveau = localStorage.getItem('ps_niveau') || 'sur'; } catch (e) {}
 
   const lib = (m, x) => (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
@@ -84,6 +85,9 @@
   const ring = (p, sm) => `<div class="ring ${sm ? 'sm' : ''}" style="--v:${pct(p)}"><b>${pct(p)}<small>%</small></b></div>`;
   const faible = x => /faible/i.test(x.fiab);
   const futurs = () => (D.pronos || []).filter(x => new Date(x.date) > new Date());
+  const ecartJour = iso => { const a = new Date(iso), b = new Date(); a.setHours(0, 0, 0, 0); b.setHours(0, 0, 0, 0); return Math.round((a - b) / 864e5); };
+  const duJour = () => { const j = JOURS.find(x => x.id === jourP); return futurs().filter(x => j.d == null || ecartJour(x.date) === j.d); };
+  const listeCourante = () => duJour().filter(x => compP === 'Tous' || x.comp === compP);
 
   /** Meilleure sélection de chaque match dans la fourchette du niveau choisi. */
   function selections(nv, liste) {
@@ -101,8 +105,10 @@
   }
 
   function vuePronos() {
-    const tous = futurs();
-    if (!tous.length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
+    const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
+    if (!futurs().length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
+    const tous = duJour();
+    if (!tous.length) return jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
     const comps = [...new Set(tous.map(x => x.comp))];
     if (compP !== 'Tous' && !comps.includes(compP)) compP = 'Tous';
     const liste = tous.filter(x => compP === 'Tous' || x.comp === compP);
@@ -110,13 +116,13 @@
     const sels = selections(nv, liste);
     const fiables = sels.filter(s => !faible(s.x));
 
-    let h = `<div class="rk">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
+    let h = jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
     h += chips(comps, compP, 'pcomp');
 
     const banker = fiables[0] || sels[0];
     if (banker) {
       const x = banker.x;
-      h += `<h2>${nv.id === 'sur' ? '🎯 Le banker du jour' : nv.id === 'equi' ? '🎯 Le coup sûr… ou presque' : '🎯 Le coup de poker'}</h2>
+      h += `<h2>${nv.id === 'sur' ? (jourP === 'auj' ? '🎯 Le banker du jour' : jourP === 'dem' ? '🎯 Le banker de demain' : '🎯 Le banker de la semaine') : nv.id === 'equi' ? '🎯 Le coup sûr… ou presque' : '🎯 Le coup de poker'}</h2>
       <div class="hero" data-pm="${banker.i}" data-pk="${esc(banker.m)}">
         <div><div class="tagline">${esc(x.comp)} · ${libJour(x.date)} ${heure(x.date)}</div>
           <div class="sel">${esc(lib(banker.m, x))}</div>
@@ -129,7 +135,7 @@
     for (const s of fiables) { if (vus.has(s.i)) continue; vus.add(s.i); legs.push(s); if (legs.length === 3) break; }
     if (legs.length >= 2) {
       const pt = legs.reduce((a, s) => a * s.p, 1);
-      h += `<h2>🧩 Le combo du jour</h2><div class="combo">
+      h += `<h2>🧩 Le combo ${jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine'}</h2><div class="combo">
         <h4>${legs.length} sélections <span>3 matchs différents</span></h4>
         ${legs.map((s, k) => `<div class="cleg" data-pm="${s.i}" data-pk="${esc(s.m)}"><i>${k + 1}</i>
           <div><div class="s">${esc(lib(s.m, s.x))}</div><div class="m">${esc(s.x.dom)} – ${esc(s.x.ext)} · ${heure(s.x.date)}</div></div>
@@ -212,11 +218,13 @@
     if (tab !== 'pronos') return;
     const n = e.target.closest('[data-niv]');
     if (n) { niveau = n.dataset.niv; try { localStorage.setItem('ps_niveau', niveau); } catch (er) {} rendre(); return; }
+    const jr = e.target.closest('[data-jour]');
+    if (jr) { jourP = jr.dataset.jour; compP = 'Tous'; rendre(); return; }
     const c = e.target.closest('[data-pcomp]');
     if (c) { compP = c.dataset.pcomp; rendre(); return; }
     if (e.target.closest('[data-combo]')) {
       const legs = [...$('#view').querySelectorAll('.cleg')].map(el => {
-        const x = futurs().filter(y => compP === 'Tous' || y.comp === compP)[+el.dataset.pm];
+        const x = listeCourante()[+el.dataset.pm];
         return { x: x, m: el.dataset.pk };
       });
       formPari('Combo : ' + legs.map(l => lib(l.m, l.x)).join(' + '));
@@ -225,8 +233,7 @@
     }
     const pm = e.target.closest('[data-pm]');
     if (pm) {
-      const liste = futurs().filter(y => compP === 'Tous' || y.comp === compP);
-      ficheMatch(liste[+pm.dataset.pm], pm.dataset.pk);
+      ficheMatch(listeCourante()[+pm.dataset.pm], pm.dataset.pk);
     }
   });
 
