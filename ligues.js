@@ -7,6 +7,9 @@
     'tur.1': { nom: 'Süper Lig', debut: 'aout' },
     'sco.1': { nom: 'Premiership (Écosse)', debut: 'aout' },
     'usa.1': { nom: 'MLS', debut: 'janv' },
+    'arg.1': { nom: 'Liga Profesional (Argentine)', debut: 'janv' },
+    'col.1': { nom: 'Primera A (Colombie)', debut: 'janv' },
+    'mex.1': { nom: 'Liga MX', debut: 'aout' },
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
   const TSDB = 'https://www.thesportsdb.com/api/v1/json/123/';
