@@ -12,6 +12,14 @@
     'mex.1': { nom: 'Liga MX', debut: 'aout' },
     'jpn.1': { nom: 'J1 League (Japon)', debut: 'aout' },
     'aus.1': { nom: 'A-League (Australie)', debut: 'aout' },
+    'ger.2': { nom: '2. Bundesliga', debut: 'aout' },
+    'aut.1': { nom: 'Bundesliga (Autriche)', debut: 'aout' },
+    'den.1': { nom: 'Superliga (Danemark)', debut: 'aout' },
+    'nor.1': { nom: 'Eliteserien (Norvège)', debut: 'janv' },
+    'swe.1': { nom: 'Allsvenskan (Suède)', debut: 'janv' },
+    'ksa.1': { nom: 'Saudi Pro League', debut: 'aout' },
+    'uefa.europa': { nom: 'Europa League', debut: 'aout' },
+    'uefa.europa.conf': { nom: 'Conference League', debut: 'aout' },
     'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
