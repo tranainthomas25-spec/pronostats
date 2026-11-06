@@ -18,9 +18,12 @@
     lg.done = lg.done || [];
     for (let r = 1; r <= 50; r++) {
       if (lg.done.indexOf(r) >= 0) continue;
-      let j;
-      try { j = await fetch(TSDB + 'eventsround.php?id=' + id + '&r=' + r + '&s=' + saison).then(x => x.ok ? x.json() : Promise.reject(x.status)); }
-      catch (e) { break; }
+      let j = null;
+      for (let essai = 0; essai < 3 && !j; essai++) {   // source gratuite limitée (~30 requêtes/min) : on patiente et on réessaie
+        try { j = await fetch(TSDB + 'eventsround.php?id=' + id + '&r=' + r + '&s=' + saison).then(x => x.ok ? x.json() : Promise.reject(x.status)); }
+        catch (e) { await pause(15000); }
+      }
+      if (!j) return false;
       const evs = (j && j.events) || [];
       if (!evs.length) break;
       let premier = Infinity, fini = true;
@@ -35,9 +38,12 @@
       });
       if (fini) lg.done.push(r);
       if (premier > limite) break;
-      await pause(250);
+      await pause(2100);
+      if (fini) fusionnerPartiel();
     }
+    return true;
   }
+  let fusionnerPartiel = () => {};
   const URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
   const CLE = 'ps_ligues_v2', DELAI = 30 * 60 * 1000;   // actualisation au plus toutes les 30 min
   const MARCHES = ['Over 1,5 match', 'Over 2,5 match', 'Over 3,5 match', 'Domicile Over 0,5', 'Domicile Over 1,5', 'Domicile Over 2,5',
@@ -109,10 +115,11 @@
   async function telecharger(force) {
     const st = lire(), courant = ym(new Date());
     if (!force && st.t && Date.now() - st.t < DELAI) return st;
-    const taches = [];
+    const taches = []; let incomplet = false;
+    fusionnerPartiel = () => ecrire(st);   // garde en mémoire les journées déjà chargées
     Object.keys(LIGUES).forEach(code => {
       const lg = st[code] = st[code] || { e: {}, m: [] };
-      if (LIGUES[code].src === 'tsdb') { taches.push(telechargerTsdb(code, lg).catch(() => {})); return; }
+      if (LIGUES[code].src === 'tsdb') { taches.push(telechargerTsdb(code, lg).then(ok => { if (!ok) incomplet = true; }).catch(() => { incomplet = true; })); return; }
       const mois = moisSaison(LIGUES[code].debut);
       Object.keys(lg.e).forEach(id => { if (lg.e[id][0].slice(0, 7).replace('-', '') < mois[0]) delete lg.e[id]; });
       lg.m = lg.m.filter(x => mois.indexOf(x) >= 0);
@@ -131,7 +138,7 @@
         }).catch(() => {})));
     });
     await Promise.all(taches);
-    st.t = Date.now();
+    st.t = incomplet ? Date.now() - DELAI + 2 * 60 * 1000 : Date.now();   // si incomplet, on recommence dans 2 min
     ecrire(st);
     return st;
   }
