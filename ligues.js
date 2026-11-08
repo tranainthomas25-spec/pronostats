@@ -64,6 +64,8 @@
   }
   let fusionnerPartiel = () => {};
   const URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
+  window.PS_LIGUES = {};   // nom affiché -> code ESPN (pour les scores en direct)
+  Object.keys(LIGUES).forEach(c => { if (!LIGUES[c].src) window.PS_LIGUES[LIGUES[c].nom] = c; });
   const CLE = 'ps_ligues_v2', DELAI = 30 * 60 * 1000;   // actualisation au plus toutes les 30 min
   const MARCHES = ['Over 1,5 match', 'Over 2,5 match', 'Over 3,5 match', 'Domicile Over 0,5', 'Domicile Over 1,5', 'Domicile Over 2,5',
     'Extérieur Over 0,5', 'Extérieur Over 1,5', 'Extérieur Over 2,5', 'Les deux équipes marquent – Oui', 'Les deux équipes marquent – Non',
@@ -232,6 +234,10 @@
         const d = new Date(m.date);
         if ((m.s === 'F' && d >= debut) || m.s === 'L') {
           D.resultats.push({ date: m.date, comp: comp, journee: '', dom: m.dom, score: (m.h || 0) + ' - ' + (m.a || 0), ext: m.ext, mt: '', statut: m.s === 'L' ? 'EN COURS' : 'Terminé' });
+          if (m.s === 'L') { const p = prono(pr[m.dom], pr[m.ext], L); if (p) D.pronos.push(Object.assign({ date: m.date, comp: comp, dom: m.dom, ext: m.ext }, p)); }   // pour le direct
+        } else if (m.s === 'P' && d < now && now - d < 3 * 3600e3) {   // commencé depuis peu : prono d'avant-match pour le direct
+          const p = prono(pr[m.dom], pr[m.ext], L);
+          if (p) D.pronos.push(Object.assign({ date: m.date, comp: comp, dom: m.dom, ext: m.ext }, p));
         } else if (m.s === 'P' && d >= now && d <= fin) {
           const a = pr[m.dom] || {}, b = pr[m.ext] || {};
           D.prochains.push({ date: m.date, comp: comp, dom: m.dom, ext: m.ext, posDom: pos[m.dom] || '', posExt: pos[m.ext] || '',
