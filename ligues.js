@@ -20,6 +20,7 @@
     'ksa.1': { nom: 'Saudi Pro League', debut: 'aout' },
     'uefa.europa': { nom: 'Europa League', debut: 'aout' },
     'uefa.europa.conf': { nom: 'Conference League', debut: 'aout' },
+    'uefa.nations': { nom: 'Ligue des Nations', debut: 'aout' },
     'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
