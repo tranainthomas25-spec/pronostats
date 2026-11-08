@@ -20,6 +20,17 @@
 .ring b small{font-size:14px}
 .ring.sm{width:52px;height:52px}.ring.sm::before{inset:5px}.ring.sm b{font-size:16px}.ring.sm b small{font-size:10px}
 .heros,.combos{display:grid;gap:12px}
+.cav{margin:12px 0 4px;padding:14px;border-radius:18px;background:linear-gradient(160deg,#2B2410,#121A2E 70%);border:1.5px solid var(--gold);box-shadow:0 6px 24px rgba(212,175,55,.15)}
+.cavh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.cavh b{font:700 22px "Barlow Condensed",sans-serif;color:var(--gold2)}.cavh span{color:var(--muted);font-size:12px}
+.cavl{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.cavl .t{font:700 14px "Barlow Condensed",sans-serif;color:var(--gold2);min-width:42px}
+.cavl .s{font-weight:600}.cavl .m{color:var(--muted);font-size:12px}.cavl .p{font-weight:700}
+.cavr{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:8px}
+.cavr>div{background:rgba(255,255,255,.04);border-radius:12px;padding:8px 10px}
+.cavr small{display:block;color:var(--muted);font-size:11px}.cavr b{font:700 22px "Barlow Condensed",sans-serif}
+.cavr .go b{color:#4ADE80;font-size:26px}
+.cavm{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.4}.cavm b{color:var(--text)}
 .lvg{display:grid;gap:10px}
 .lv{background:linear-gradient(160deg,#2A1420,#141B30);border:1px solid rgba(248,113,113,.45);border-radius:16px;padding:10px 14px;cursor:pointer}
 .lvt{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
@@ -191,7 +202,7 @@
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
     if (!futurs().length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
     const tous = duJour();
-    if (!tous.length) return blocLive() + resumeBilan() + jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
+    if (!tous.length) return blocLive() + blocComboAV() + resumeBilan() + jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
     const comps = [...new Set(tous.map(x => x.comp))];
     if (compP !== 'Tous' && !comps.includes(compP)) compP = 'Tous';
     const liste = tous.filter(x => compP === 'Tous' || x.comp === compP);
@@ -199,7 +210,7 @@
     const sels = selections(nv, liste);
     const fiables = sels.filter(s => !faible(s.x));
 
-    let h = blocLive() + resumeBilan() + jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
+    let h = blocLive() + blocComboAV() + resumeBilan() + jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
     h += chips(comps, compP, 'pcomp');
 
     const quand = jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine';
@@ -391,6 +402,57 @@
       lab.innerHTML = `<span>Sélection</span><b style="font-size:15px">${esc(lib(focus, x))}</b>`;
       $('#fPari').insertBefore(lab, $('#fPari').firstChild);
     };
+  }
+
+
+  /* ---------- 💰 COMBO À JOUER : 2-3 sélections « Sûr » sur des matchs différents, probas corrigées par le bilan ---------- */
+  let comboAV = null;
+  function calcComboAV() {
+    const now = Date.now(), finJour = new Date(); finJour.setHours(23, 59, 59, 999);
+    const ratio = (comp, m) => {   // le bilan corrige les probas : réussite réelle / réussite annoncée pour ce championnat et ce type de pari
+      let ok = 0, sp = 0, n = 0;
+      (D.bilan || []).forEach(b => { if (b.per === 'tout' && b.type === 'mk' && b.comp === comp && b.cle === m) { ok += b.ok; sp += b.sp; n += b.n; } });
+      return n >= 15 && sp ? Math.max(0.85, Math.min(1.04, ok / sp)) : 0.97;
+    };
+    const cand = fin => {
+      const out = [];
+      (D.pronos || []).forEach(x => {
+        const t = +new Date(x.date);
+        if (t < now + 10 * 60e3 || t > fin || faible(x) || !x.p) return;
+        let best = null;
+        Object.keys(x.p).forEach(m => {
+          const p = x.p[m]; if (!(p >= 0.75 && p <= 0.92)) return;   // trop sûr = cote ridicule chez le bookmaker
+          const pc = p * ratio(x.comp, m);
+          if (!best || pc > best.pc) best = { x: x, m: m, p: p, pc: pc };
+        });
+        if (best && best.pc >= 0.76) out.push(best);
+      });
+      return out.sort((a, b) => b.pc - a.pc);
+    };
+    let legs = cand(+finJour), quand = "aujourd'hui";
+    if (legs.length < 2) { legs = cand(now + 36 * 3600e3); quand = 'prochaines 36 h'; }
+    const choisis = []; let pt = 1;
+    for (const l of legs) {
+      choisis.push(l); pt *= l.pc;
+      if (choisis.length >= 3 || (choisis.length >= 2 && 1 / pt >= 1.7)) break;
+    }
+    if (choisis.length < 2) return null;
+    choisis.sort((a, b) => a.x.date.localeCompare(b.x.date));
+    return { legs: choisis, pt: pt, quand: quand, seuil: (1 / pt * 1.05) };
+  }
+  function blocComboAV() {
+    comboAV = D ? calcComboAV() : null;
+    if (!comboAV) return '';
+    const c = comboAV, seuil = c.seuil.toFixed(2).replace('.', ',');
+    return `<div class="cav">
+      <div class="cavh"><b>💰 Combo à jouer</b><span>${esc(c.quand)} · ${c.legs.length} matchs</span></div>
+      ${c.legs.map((l, k) => `<div class="cavl" data-cavl="${k}"><span class="t">${libJour(l.x.date) === "Aujourd'hui" ? '' : esc(libJour(l.x.date)) + ' '}${heure(l.x.date)}</span>
+        <div><div class="s">${esc(lib(l.m, l.x))}</div><div class="m">${esc(l.x.dom)} – ${esc(l.x.ext)} · ${esc(l.x.comp)}</div></div>
+        <span class="p">${pct(l.pc)} %</span></div>`).join('')}
+      <div class="cavr"><div><small>Chances estimées</small><b>${pct(c.pt)} %</b></div>
+        <div class="go"><small>À jouer si la cote totale est d'au moins</small><b>${seuil}</b></div></div>
+      <div class="cavm">💡 Monte ce combo chez ton bookmaker : si la cote totale est ≥ <b>${seuil}</b>, joue-le avec <b>2 % de ta bankroll</b>. En dessous, passe ton tour : il ne serait pas rentable sur la durée.</div>
+      <button class="primary" data-cav="add" style="margin-top:10px">+ Ajouter à Mes paris</button></div>`;
   }
 
   /* ---------- EN DIRECT : scores ESPN (gratuit) + probabilités recalculées pendant le match ---------- */
@@ -595,6 +657,13 @@
   $('#view').addEventListener('click', e => {
     if (tab !== 'pronos') return;
     if (e.target.closest('[data-bilan]')) { ficheBilan(); return; }
+    const cl = e.target.closest('[data-cavl]');
+    if (cl && comboAV) { const l = comboAV.legs[+cl.dataset.cavl]; ficheMatch(l.x, l.m); return; }
+    if (e.target.closest('[data-cav]') && comboAV) {
+      formPari('Combo : ' + comboAV.legs.map(l => lib(l.m, l.x) + ' (' + l.x.dom + ' – ' + l.x.ext + ')').join(' + '));
+      $('#pType').value = 'Combiné';
+      return;
+    }
     const lv = e.target.closest('[data-live]');
     if (lv) { liveFocus = null; ficheLive(lv.dataset.live); return; }
     const tr = e.target.closest('[data-tri]');
