@@ -421,11 +421,11 @@
         if (t < now + 10 * 60e3 || t > fin || faible(x) || !x.p) return;
         let best = null;
         Object.keys(x.p).forEach(m => {
-          const p = x.p[m]; if (!(p >= 0.75 && p <= 0.92)) return;   // trop sûr = cote ridicule chez le bookmaker
+          const p = x.p[m]; if (!(p >= 0.76 && p <= 0.88)) return;   // « Sûr » mais avec une vraie cote (≈1,15–1,30) : au-delà de 88 %, le bookmaker ne paie presque rien
           const pc = p * ratio(x.comp, m);
           if (!best || pc > best.pc) best = { x: x, m: m, p: p, pc: pc };
         });
-        if (best && best.pc >= 0.76) out.push(best);
+        if (best && best.pc >= 0.75) out.push(best);
       });
       return out.sort((a, b) => b.pc - a.pc);
     };
@@ -434,7 +434,7 @@
     const choisis = []; let pt = 1;
     for (const l of legs) {
       choisis.push(l); pt *= l.pc;
-      if (choisis.length >= 3 || (choisis.length >= 2 && 1 / pt >= 1.7)) break;
+      if (choisis.length >= 3) break;
     }
     if (choisis.length < 2) return null;
     choisis.sort((a, b) => a.x.date.localeCompare(b.x.date));
