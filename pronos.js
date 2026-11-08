@@ -20,6 +20,17 @@
 .ring b small{font-size:14px}
 .ring.sm{width:52px;height:52px}.ring.sm::before{inset:5px}.ring.sm b{font-size:16px}.ring.sm b small{font-size:10px}
 .heros,.combos{display:grid;gap:12px}
+.lvg{display:grid;gap:10px}
+.lv{background:linear-gradient(160deg,#2A1420,#141B30);border:1px solid rgba(248,113,113,.45);border-radius:16px;padding:10px 14px;cursor:pointer}
+.lvt{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.lvt .pt{color:#F87171;font-weight:700}.lvt .pt.mi{color:var(--gold2)}.lvt .pt.fin{color:var(--muted)}
+.lvt .pt.on{animation:clign 1.6s infinite}@keyframes clign{50%{opacity:.45}}
+.lvs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:6px 0 2px}
+.lvs .eq{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lvs .eq.r{text-align:right}
+.lvs b{font:700 26px "Barlow Condensed",sans-serif;color:var(--gold2)}
+.rc{color:#EF4444;font-style:normal;font-size:12px}
+.lvp{font-size:12px;color:var(--muted)}.lvp b{color:var(--text)}
+.lve{display:flex;flex-direction:column;gap:3px;font-size:12.5px;margin:6px 0 2px}.lve .r{text-align:right}
 .md.hr{font:700 15px "Barlow Condensed",sans-serif;color:var(--gold2);min-width:44px;text-align:center}
 .sepj{padding:8px 4px 6px;font:700 13px "Barlow Condensed",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border-top:1px solid var(--line)}
 .sepj:first-child{border-top:0}
@@ -79,6 +90,7 @@
 
 /* ---------- Tablette ---------- */
 @media (min-width:700px){
+  .lvg{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
   .heros,.combos{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
   main{max-width:1180px;padding:4px 24px 40px}
   #view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;align-items:start}
@@ -179,7 +191,7 @@
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
     if (!futurs().length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
     const tous = duJour();
-    if (!tous.length) return resumeBilan() + jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
+    if (!tous.length) return blocLive() + resumeBilan() + jours + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : 'demain'} 😴<br>Regarde ${jourP === 'auj' ? 'demain' : 'les 7 prochains jours'} juste au-dessus.</div>`;
     const comps = [...new Set(tous.map(x => x.comp))];
     if (compP !== 'Tous' && !comps.includes(compP)) compP = 'Tous';
     const liste = tous.filter(x => compP === 'Tous' || x.comp === compP);
@@ -187,7 +199,7 @@
     const sels = selections(nv, liste);
     const fiables = sels.filter(s => !faible(s.x));
 
-    let h = resumeBilan() + jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
+    let h = blocLive() + resumeBilan() + jours + `<div class="rk" style="margin-top:8px">${NIVEAUX.map(n => `<button class="rkb ${n.id === nv.id ? 'on' : ''}" data-niv="${n.id}">${n.nom}<small>${n.sous}</small></button>`).join('')}</div>`;
     h += chips(comps, compP, 'pcomp');
 
     const quand = jourP === 'auj' ? 'du jour' : jourP === 'dem' ? 'de demain' : 'de la semaine';
@@ -381,6 +393,188 @@
     };
   }
 
+  /* ---------- EN DIRECT : scores ESPN (gratuit) + probabilités recalculées pendant le match ---------- */
+  const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/soccer/';
+  const SLUG = { 'Ligue 1': 'fra.1', 'Premier League': 'eng.1', 'Liga': 'esp.1', 'Serie A': 'ita.1', 'Bundesliga': 'ger.1',
+    'Ligue des champions': 'uefa.champions', 'Eredivisie': 'ned.1', 'Liga Portugal': 'por.1', 'Championship': 'eng.2', 'Brasileirão': 'bra.1' };
+  const slugDe = comp => SLUG[comp] || (window.PS_LIGUES || {})[comp];
+  const LIVE = {};            // clé -> état du match en direct
+  let liveOuvert = null, liveFocus = null;
+  const cleL = x => x.comp + '|' + x.date + '|' + x.dom;
+  const MOTS = /\b(fc|cf|ac|sc|afc|as|us|ss|ssc|club|de|the|rc|ogc|sv|vfb|vfl|fk|sk|cd|ud|sd|rcd|ca|cr|se|ec|sl|sporting|real)\b/g;
+  const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(MOTS, ' ').replace(/\s+/g, ' ').trim();
+  function proche(a, noms) {
+    const na = norm(a); if (!na) return 0;
+    let best = 0;
+    noms.forEach(n => {
+      const nb = norm(n); if (!nb) return;
+      if (na === nb) best = Math.max(best, 3);
+      else if (na.includes(nb) || nb.includes(na)) best = Math.max(best, 2);
+      else if (na.split(' ').some(t => t.length > 2 && nb.split(' ').indexOf(t) >= 0)) best = Math.max(best, 1.5);
+      else if (na.slice(0, 4) === nb.slice(0, 4)) best = Math.max(best, 0.5);
+    });
+    return best;
+  }
+  const nomsEq = t => [t.displayName, t.shortDisplayName, t.name, t.location, t.abbreviation];
+  const candidatsLive = () => (D && D.pronos || []).filter(x => {
+    const dt = Date.now() - new Date(x.date);
+    return dt > -60e3 && dt < 140 * 60e3 && x.lD && x.lE && slugDe(x.comp);
+  });
+  const ymd = d => d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+
+  function lireEvent(e) {
+    const c = e.competitions[0], h = c.competitors.find(x => x.homeAway === 'home'), a = c.competitors.find(x => x.homeAway === 'away');
+    const st = e.status || {}, ty = st.type || {};
+    const clk = String(st.displayClock || '0');
+    const mm = clk.match(/(\d+)(?:'\s*\+\s*(\d+))?/), base = mm ? +mm[1] : 0, plus = mm && mm[2] ? +mm[2] : 0;
+    const evs = [], rouges = { D: 0, E: 0 };
+    (c.details || []).forEach(d => {
+      const camp = d.team && d.team.id === h.team.id ? 'D' : 'E';
+      if (d.redCard) rouges[camp]++;
+      if (d.scoringPlay || d.redCard) evs.push({ min: d.clock && d.clock.displayValue || '', camp: camp, t: d.redCard ? '🟥' : (d.ownGoal ? '⚽ (csc)' : d.penaltyKick ? '⚽ (pén.)' : '⚽'),
+        qui: (d.athletesInvolved || []).map(x => x.shortName || x.displayName).join(', ') });
+    });
+    return { etat: ty.state, mi: ty.name === 'STATUS_HALFTIME', fini: !!ty.completed, periode: st.period || 1, base: base, plus: plus,
+      txt: ty.name === 'STATUS_HALFTIME' ? 'Mi-temps' : ty.completed ? 'Terminé' : ty.state === 'pre' ? 'Bientôt' : clk,
+      h: +h.score || 0, a: +a.score || 0, rouges: rouges, evs: evs, maj: Date.now() };
+  }
+
+  async function majLive() {
+    if (document.hidden || !D) return;
+    const cands = candidatsLive();
+    if (!cands.length) { if (Object.keys(LIVE).length) { Object.keys(LIVE).forEach(k => delete LIVE[k]); afficherLive(); } return; }
+    const groupes = {};
+    cands.forEach(x => { const s = slugDe(x.comp), d = new Date(x.date); [ymd(d), ymd(new Date(d - 864e5))].forEach((j, i) => {
+      const k = s + '|' + j; (groupes[k] = groupes[k] || { s: s, j: j, x: [], sec: i }).x.push(x); }); });
+    const evParSlug = {};
+    await Promise.all(Object.values(groupes).filter(g => !g.sec).map(g =>
+      fetch(ESPN + g.s + '/scoreboard?dates=' + g.j).then(r => r.ok ? r.json() : null).then(j => { (evParSlug[g.s] = evParSlug[g.s] || []).push(...((j && j.events) || [])); }).catch(() => {})));
+    cands.forEach(x => {
+      const evs = (evParSlug[slugDe(x.comp)] || []).filter(e => Math.abs(new Date(e.date) - new Date(x.date)) <= 20 * 60e3);
+      let best = null, bs = 0;
+      evs.forEach(e => {
+        const c = e.competitions && e.competitions[0]; if (!c) return;
+        const h = c.competitors.find(t => t.homeAway === 'home'), a = c.competitors.find(t => t.homeAway === 'away');
+        const sc = proche(x.dom, nomsEq(h.team)) + proche(x.ext, nomsEq(a.team));
+        if (sc > bs) { bs = sc; best = e; }
+      });
+      if (best && bs >= 1.5) {
+        const l = lireEvent(best);
+        if (l.etat === 'in' || (l.fini && Date.now() - new Date(x.date) < 140 * 60e3)) LIVE[cleL(x)] = Object.assign(l, { x: x });
+        else delete LIVE[cleL(x)];
+      }
+    });
+    afficherLive();
+  }
+
+  /** Minutes restantes (temps additionnel moyen compris), puis Poisson sur le temps restant. */
+  function probasLive(L) {
+    const x = L.x;
+    let reste;
+    if (L.fini) reste = 0;
+    else if (L.mi) reste = 49;
+    else if (L.periode <= 1) reste = Math.max(0, 45 - L.base) + 49;
+    else reste = Math.max(0.5, 94 - L.base - L.plus);
+    const f = reste / 94;
+    const ajD = Math.pow(0.7, L.rouges.D) * Math.pow(1.2, L.rouges.E), ajE = Math.pow(0.7, L.rouges.E) * Math.pow(1.2, L.rouges.D);
+    const lh = x.lD * f * ajD, la = x.lE * f * ajE, h = L.h, a = L.a, T = h + a;
+    const po = (k, l) => { let v = Math.exp(-l); for (let i = 1; i <= k; i++) v *= l / i; return v; };
+    const g = {};
+    let p1 = 0, pN = 0, p2 = 0, btts = 0, tot = {};
+    for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++) {
+      const p = po(i, lh) * po(j, la), H = h + i, A = a + j;
+      if (H > A) p1 += p; else if (H === A) pN += p; else p2 += p;
+      if (H > 0 && A > 0) btts += p;
+      tot[i + j] = (tot[i + j] || 0) + p;
+    }
+    const plusDe = n => { let s = 0; Object.keys(tot).forEach(k => { if (T + +k > n) s += tot[k]; }); return s; };
+    const lt = lh + la, aucun = Math.exp(-lt);
+    const out = [];
+    const ajout = (grp, lbl, p, type) => out.push({ grp: grp, lbl: lbl, p: Math.min(0.999, Math.max(0.001, p)), type: type });
+    if (!L.fini) {
+      ajout('⚡ Prochain but', 'Prochain but : ' + x.dom, lt ? lh / lt * (1 - aucun) : 0, 'Autre');
+      ajout('⚡ Prochain but', 'Prochain but : ' + x.ext, lt ? la / lt * (1 - aucun) : 0, 'Autre');
+      ajout('⚡ Prochain but', 'Plus aucun but', aucun, 'Plus/Moins buts');
+      [T, T + 1, T + 2].forEach(n => { const p = plusDe(n + 0.5); ajout('🎯 Nombre de buts', 'Plus de ' + n + ',5 buts', p, 'Plus/Moins buts'); ajout('🎯 Nombre de buts', 'Moins de ' + n + ',5 buts', 1 - p, 'Plus/Moins buts'); });
+      ajout('🎯 Nombre de buts', x.dom + ' marque encore', 1 - Math.exp(-lh), 'Plus/Moins buts');
+      ajout('🎯 Nombre de buts', x.ext + ' marque encore', 1 - Math.exp(-la), 'Plus/Moins buts');
+    }
+    ajout('🏁 Résultat final', 'Victoire ' + x.dom, p1, '1N2'); ajout('🏁 Résultat final', 'Match nul', pN, '1N2'); ajout('🏁 Résultat final', 'Victoire ' + x.ext, p2, '1N2');
+    ajout('🏁 Résultat final', x.dom + ' ou nul', p1 + pN, 'Double chance'); ajout('🏁 Résultat final', x.ext + ' ou nul', p2 + pN, 'Double chance');
+    ajout('🏁 Résultat final', 'Pas de nul', p1 + p2, 'Double chance');
+    if (!(h > 0 && a > 0)) { ajout('🤝 Les 2 marquent', 'Les 2 équipes marquent – Oui', btts, 'Les deux marquent'); ajout('🤝 Les 2 marquent', 'Les 2 équipes marquent – Non', 1 - btts, 'Les deux marquent'); }
+    return { lignes: out, lh: lh, la: la, reste: Math.round(reste) };
+  }
+
+  function carteLive(k, L) {
+    const x = L.x, pr = probasLive(L), nb = pr.lignes.find(l => l.grp === '⚡ Prochain but');
+    const cl = L.fini ? 'fin' : L.mi ? 'mi' : 'on';
+    return `<div class="lv" data-live="${esc(k)}">
+      <div class="lvt"><span class="pt ${cl}">${L.fini ? '' : '●'} ${esc(L.txt)}</span><span>${esc(x.comp)}</span></div>
+      <div class="lvs"><span class="eq">${esc(x.dom)}${L.rouges.D ? ' <i class="rc">' + '▮'.repeat(L.rouges.D) + '</i>' : ''}</span>
+        <b>${L.h} – ${L.a}</b><span class="eq r">${L.rouges.E ? '<i class="rc">' + '▮'.repeat(L.rouges.E) + '</i> ' : ''}${esc(x.ext)}</span></div>
+      ${L.fini ? '' : `<div class="lvp">Encore un but : <b>${pct(1 - Math.exp(-(pr.lh + pr.la)))} %</b> · touche pour jouer en live</div>`}</div>`;
+  }
+  function blocLive() {
+    const ks = Object.keys(LIVE).sort((p, q) => LIVE[p].x.date.localeCompare(LIVE[q].x.date));
+    if (!ks.length) return '<div id="liveBox"></div>';
+    return `<div id="liveBox"><h2 class="secth">🔴 En direct <small>${ks.filter(k => !LIVE[k].fini).length} match(s) · mise à jour toutes les 30 s</small></h2>
+      <div class="lvg">${ks.map(k => carteLive(k, LIVE[k])).join('')}</div></div>`;
+  }
+  function afficherLive() {
+    if (tab === 'pronos') { const b = document.getElementById('liveBox'); if (b) b.outerHTML = blocLive(); }
+    if (liveOuvert && !$('#veil').classList.contains('hidden') && document.getElementById('lvSheet') && (document.activeElement || {}).id !== 'vCote') ficheLive(liveOuvert, true);
+  }
+
+  function ficheLive(k, maj) {
+    const L = LIVE[k]; if (!L) return;
+    const x = L.x, pr = probasLive(L);
+    const coteTapee = maj && $('#vCote') ? $('#vCote').value : '';
+    liveOuvert = k;
+    if (!liveFocus || !pr.lignes.some(l => l.lbl === liveFocus)) liveFocus = pr.lignes[0].lbl;
+    const F = pr.lignes.find(l => l.lbl === liveFocus);
+    const grps = [...new Set(pr.lignes.map(l => l.grp))];
+    ouvrir(`<div id="lvSheet"></div><h3>🔴 ${esc(x.dom)} – ${esc(x.ext)}</h3>
+      <div style="color:var(--muted);margin:-8px 0 10px;font-size:13px">${esc(x.comp)} · ${L.fini ? 'Terminé' : esc(L.txt) + ' · ~' + pr.reste + ' min restantes'}</div>
+      <div class="xg"><div><b>${pr.lh.toFixed(2)}</b><small>buts encore attendus<br>${esc(x.dom)}</small></div>
+        <div class="sc"><small>Score</small><b style="font-size:30px">${L.h} – ${L.a}</b></div>
+        <div><b>${pr.la.toFixed(2)}</b><small>buts encore attendus<br>${esc(x.ext)}</small></div></div>
+      ${L.evs.length ? `<div class="lve">${L.evs.map(e => `<span class="${e.camp === 'D' ? '' : 'r'}">${esc(e.min)} ${e.t} ${esc(e.qui)}</span>`).join('')}</div>` : ''}
+      ${L.rouges.D || L.rouges.E ? `<div style="color:var(--muted);font-size:12px;margin:4px 0">🟥 Carton rouge pris en compte (équipe en infériorité : −30 % de buts attendus).</div>` : ''}
+      ${L.fini ? '' : `<label>Tester une cote live · ${esc(F.lbl)} (${pct(F.p)} %)</label>
+      <div class="row2"><input id="vCote" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="Cote du bookmaker" value="${esc(coteTapee)}">
+        <button class="primary" style="margin:0" id="vAdd">+ Mes paris</button></div><div id="vRes"></div>`}
+      ${grps.map(gp => `<label style="margin-top:14px">${gp}</label><div>${pr.lignes.filter(l => l.grp === gp).map(l => `<div class="mk ${l.lbl === liveFocus ? 'on' : ''}" data-lk="${esc(l.lbl)}">
+        <span class="l">${esc(l.lbl)}</span><span class="v">${pct(l.p)} % <small style="color:var(--muted);font:500 11.5px Barlow">· ${cote(l.p)}</small></span>
+        <div class="bar"><i style="width:${pct(l.p)}%"></i></div></div>`).join('')}</div>`).join('')}
+      <p class="disc" style="margin-top:12px">Recalculé à chaque mise à jour à partir des buts attendus d'avant-match, du temps restant, du score et des cartons rouges. Le modèle ne voit pas la physionomie du match (domination, blessures, changements) : en live, les bookmakers en savent souvent plus.</p>`);
+    const sh = $('#sheet');
+    sh.querySelectorAll('[data-lk]').forEach(el => el.onclick = () => { liveFocus = el.dataset.lk; ficheLive(k, true); });
+    if (L.fini) return;
+    const test = () => {
+      const c = parseFloat(String($('#vCote').value).replace(',', '.')), p = F.p, r = $('#vRes');
+      if (!(c > 1)) { r.innerHTML = ''; return; }
+      const ev = p * c - 1;
+      r.innerHTML = ev > SUSPECT ? `<div class="verdict warn">⚠️ Écart très élevé (+${Math.round(ev * 100)} %) : en live, le bookmaker voit souvent quelque chose que le modèle ignore.</div>`
+        : ev > MARGE ? `<div class="verdict ok">✅ Valeur positive : +${Math.round(ev * 100)} % d'espérance selon le modèle</div>`
+        : `<div class="verdict no">❌ Pas de valeur : il faudrait une cote ≥ ${coteMin(p)}</div>`;
+    };
+    $('#vCote').oninput = test; test();
+    $('#vAdd').onclick = () => {
+      const c = $('#vCote').value;
+      liveOuvert = null; fermer(); formPari(x.dom + ' - ' + x.ext);
+      $('#pType').value = F.type;
+      if (c) { $('#pCote').value = c; $('#pCote').dispatchEvent(new Event('input')); }
+      const lab = document.createElement('div'); lab.className = 'gain';
+      lab.innerHTML = `<span>Sélection live (${esc(L.txt)}, ${L.h}-${L.a})</span><b style="font-size:15px">${esc(F.lbl)}</b>`;
+      $('#fPari').insertBefore(lab, $('#fPari').firstChild);
+    };
+  }
+  setInterval(majLive, 30000);
+  setTimeout(majLive, 2500);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) majLive(); });
+  $('#veil').addEventListener('click', e => { if (e.target.id === 'veil') liveOuvert = null; });
+
   /* ---------- Intégration à l'appli ---------- */
   const nav = $('#tabs');
   nav.style.gridTemplateColumns = 'repeat(5,1fr)';
@@ -401,6 +595,8 @@
   $('#view').addEventListener('click', e => {
     if (tab !== 'pronos') return;
     if (e.target.closest('[data-bilan]')) { ficheBilan(); return; }
+    const lv = e.target.closest('[data-live]');
+    if (lv) { liveFocus = null; ficheLive(lv.dataset.live); return; }
     const tr = e.target.closest('[data-tri]');
     if (tr) { triSel = tr.dataset.tri; try { localStorage.setItem('ps_tri', triSel); } catch (err) {} rendre(); return; }
     const n = e.target.closest('[data-niv]');
