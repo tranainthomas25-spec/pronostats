@@ -23,6 +23,7 @@
     'uefa.nations': { nom: 'Ligue des Nations', debut: 'aout' },
     'uefa.wchampions': { nom: 'Ligue des champions féminine', debut: 'aout', buteurs: true },
     'fra.w.1': { nom: 'Arkema Première Ligue', debut: 'aout', buteurs: true },
+    'concacaf.nations.league': { nom: 'Ligue des Nations CONCACAF', debut: 'aout' },
     'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
