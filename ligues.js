@@ -21,8 +21,8 @@
     'uefa.europa': { nom: 'Europa League', debut: 'aout' },
     'uefa.europa.conf': { nom: 'Conference League', debut: 'aout' },
     'uefa.nations': { nom: 'Ligue des Nations', debut: 'aout' },
-    'uefa.wchampions': { nom: 'Ligue des champions féminine', debut: 'aout' },
-    'fra.w.1': { nom: 'Arkema Première Ligue', debut: 'aout' },
+    'uefa.wchampions': { nom: 'Ligue des champions féminine', debut: 'aout', buteurs: true },
+    'fra.w.1': { nom: 'Arkema Première Ligue', debut: 'aout', buteurs: true },
     'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
     'tsdb:4422': { nom: 'Ekstraklasa', debut: 'aout', src: 'tsdb' },   // Pologne, via TheSportsDB (gratuit)
   };
@@ -172,7 +172,7 @@
   async function telecharger(force, src) {
     const st = lire(), courant = ym(new Date()), cleT = 't_' + src;
     const codes = Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src);
-    if (!force && st[cleT] && Date.now() - st[cleT] < DELAI && codes.every(c => st[c])) return st;   // championnat ajouté = on télécharge
+    if (!force && st[cleT] && Date.now() - st[cleT] < DELAI && codes.every(c => st[c] && (!LIGUES[c].buteurs || st[c].v === 2))) return st;   // championnat ajouté = on télécharge
     const taches = []; let incomplet = false, chaine = Promise.resolve();
     fusionnerPartiel = () => ecrire(st);   // garde en mémoire les journées déjà chargées
     Object.keys(LIGUES).filter(code => (LIGUES[code].src || 'espn') === src).forEach(code => {
@@ -181,6 +181,7 @@
         chaine = chaine.then(() => telechargerTsdb(code, lg)).then(ok => { if (!ok) incomplet = true; }).catch(() => { incomplet = true; });
         return;
       }
+      if (LIGUES[code].buteurs && lg.v !== 2) { lg.m = []; lg.v = 2; }   // buteuses : on recharge les mois déjà gardés
       const mois = moisSaison(LIGUES[code].debut);
       Object.keys(lg.e).forEach(id => { if (lg.e[id][0].slice(0, 7).replace('-', '') < mois[0]) delete lg.e[id]; });
       lg.m = lg.m.filter(x => mois.indexOf(x) >= 0);
@@ -194,6 +195,9 @@
             lg.e[ev.id] = [ev.date, t.completed ? 'F' : t.state === 'in' ? 'L' : t.state === 'pre' ? 'P' : 'X',
               h.team.shortDisplayName || h.team.displayName, a.team.shortDisplayName || a.team.displayName,
               h.score === '' || h.score == null ? null : +h.score, a.score === '' || a.score == null ? null : +a.score];
+            if (LIGUES[code].buteurs && t.completed)   // buteuses du match : [nom, 'h' ou 'a', penalty]
+              lg.e[ev.id].push((c.details || []).filter(d => d.scoringPlay && !d.ownGoal && d.athletesInvolved && d.athletesInvolved[0] && d.team)
+                .map(d => [d.athletesInvolved[0].displayName, String(d.team.id) === String(h.team.id) ? 'h' : 'a', d.penaltyKick ? 1 : 0]));
           });
           if (mo < courant && new Date().getDate() >= 3) lg.m.push(mo);
         }).catch(() => {})));
@@ -217,7 +221,7 @@
     Object.keys(LIGUES).forEach(code => {
       const lg = st[code]; if (!lg) return;
       const comp = LIGUES[code].nom;
-      const ms = Object.values(lg.e).map(x => ({ date: x[0], s: x[1], dom: x[2], ext: x[3], h: x[4], a: x[5] }))
+      const ms = Object.values(lg.e).map(x => ({ date: x[0], s: x[1], dom: x[2], ext: x[3], h: x[4], a: x[5], bt: x[6] }))
         .sort((x, y) => x.date.localeCompare(y.date));
       const term = ms.filter(m => m.s === 'F' && m.h != null && m.a != null);
       if (!term.length) return;
@@ -232,6 +236,16 @@
       }).sort((x, y) => y.pts - x.pts || y.diff - x.diff || y.bp - x.bp);
       const pos = {};
       tab.forEach((t, i) => { t.pos = i + 1; pos[t.equipe] = i + 1; D.classements.push(t); });
+      if (LIGUES[code].buteurs) {   // classement des buteuses à partir des buts de chaque match
+        const bt = {}, jEq = {};
+        tab.forEach(t => jEq[t.equipe] = t.j);
+        term.forEach(m => (m.bt || []).forEach(([nom, cote, pen]) => {
+          const eq = cote === 'h' ? m.dom : m.ext, k = eq + '|' + nom;
+          const o = bt[k] = bt[k] || { comp: comp, equipe: eq, joueur: nom, buts: 0, pen: 0, matchs: jEq[eq] || 0, sansPd: true };
+          o.buts++; o.pen += pen;
+        }));
+        D.buteurs = (D.buteurs || []).concat(Object.values(bt));
+      }
       ms.forEach(m => {
         const d = new Date(m.date);
         if ((m.s === 'F' && d >= debut) || m.s === 'L') {

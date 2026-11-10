@@ -189,7 +189,7 @@
         const pd = b.pd || 0;
         out.push({ joueur: b.joueur, equipe: eq, buts: b.buts, pd: pd, matchs: b.matchs, pen: b.pen,
           p: b.buts >= 2 ? 1 - Math.exp(-Math.min(1.5, (b.buts / b.matchs) * f)) : null,
-          pdec: b.buts + pd >= 3 ? 1 - Math.exp(-Math.min(2, ((b.buts + pd) / b.matchs) * f)) : null });
+          pdec: !b.sansPd && b.buts + pd >= 3 ? 1 - Math.exp(-Math.min(2, ((b.buts + pd) / b.matchs) * f)) : null });
       });
     });
     return out;
