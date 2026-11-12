@@ -142,14 +142,14 @@
     'Victoire domicile (1)': 'Victoire {D}', 'Match nul (N)': 'Match nul', 'Victoire extérieur (2)': 'Victoire {E}',
     'Double chance 1N': '{D} ou nul', 'Double chance N2': '{E} ou nul', 'Double chance 12': 'Pas de nul',
   };
-  const TYPE = m => /^B:/.test(m) ? 'Buteur' : /^P:/.test(m) ? 'Autre' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
+  const TYPE = m => /^MT:/.test(m) ? '1N2' : /^B:/.test(m) ? 'Buteur' : /^P:/.test(m) ? 'Autre' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
     : /Double chance/.test(m) ? 'Double chance' : '1N2';
   const MARGE = 0.05, SUSPECT = 0.25;
   let niveau = 'sur', compP = 'Tous', jourP = 'auj';
   const JOURS = [{ id: 'auj', nom: "📅 Aujourd'hui", d: 0 }, { id: 'dem', nom: '⏭️ Demain', d: 1 }, { id: 'sem', nom: '🗓️ 7 jours', d: null }];
   try { niveau = localStorage.getItem('ps_niveau') || 'sur'; } catch (e) {}
 
-  const lib = (m, x) => /^B:/.test(m) ? m.slice(2) + ' buteur' : /^P:/.test(m) ? m.slice(2) + ' décisif (but ou passe)' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
+  const lib = (m, x) => /^MT:/.test(m) ? ({ 'MT:1': x.dom + ' mène à la mi-temps', 'MT:N': 'Nul à la mi-temps', 'MT:2': x.ext + ' mène à la mi-temps' })[m] : /^B:/.test(m) ? m.slice(2) + ' buteur' : /^P:/.test(m) ? m.slice(2) + ' décisif (but ou passe)' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
   const pct = p => Math.round(p * 100);
   const cote = p => (1 / p).toFixed(2).replace('.', ',');
   const coteMin = p => (1 / p * (1 + MARGE)).toFixed(2).replace('.', ',');
@@ -196,7 +196,15 @@
   }
   const buteursMatch = x => joueursMatch(x).filter(j => j.p != null).sort((a, b) => b.p - a.p);
   const decisifsMatch = x => joueursMatch(x).filter(j => j.pdec != null).sort((a, b) => b.pdec - a.pdec);
-  const probas = x => { const o = Object.assign({}, x.p); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
+  /* Résultat à la mi-temps : ~45 % des buts tombent en 1re période (loi de Poisson sur les buts attendus) */
+  const miTemps = x => {
+    if (!(x.lD > 0 && x.lE > 0)) return null;
+    const a = x.lD * 0.45, b = x.lE * 0.45, po = (k, l) => { let v = Math.exp(-l); for (let i = 1; i <= k; i++) v *= l / i; return v; };
+    let p1 = 0, pN = 0, p2 = 0;
+    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) { const v = po(i, a) * po(j, b); if (i > j) p1 += v; else if (i === j) pN += v; else p2 += v; }
+    return { 'MT:1': p1, 'MT:N': pN, 'MT:2': p2 };
+  };
+  const probas = x => { const o = Object.assign({}, x.p, miTemps(x) || {}); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
 
   function vuePronos() {
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
@@ -375,6 +383,8 @@
       <div class="row2"><input id="vCote" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="Cote du bookmaker">
         <button class="primary" style="margin:0" id="vAdd">+ Mes paris</button></div>
       <div id="vRes"></div>
+      ${P['MT:N'] != null ? `<label style="margin-top:16px">⏱️ Résultat à la mi-temps (touche pour tester)</label>
+      <div>${['MT:1', 'MT:N', 'MT:2'].map(ligne).join('')}</div>` : ''}
       ${bts.length ? `<label style="margin-top:16px">⚽ Buteurs possibles (touche pour tester)</label>
       <div>${bts.slice(0, 10).map(b => ligne('B:' + b.joueur)).join('')}</div>
       <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilités s'il est titulaire, d'après ses buts (et passes) de la saison et les buts attendus de son équipe.</div>` : ''}

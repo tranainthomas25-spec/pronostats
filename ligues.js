@@ -20,7 +20,7 @@
     'ksa.1': { nom: 'Saudi Pro League', debut: 'aout' },
     'uefa.europa': { nom: 'Europa League', debut: 'aout' },
     'uefa.europa.conf': { nom: 'Conference League', debut: 'aout' },
-    'uefa.nations': { nom: 'Ligue des Nations', debut: 'aout' },
+    'uefa.nations': { nom: 'Ligue des Nations', debut: 'aout', buteurs: true },
     'uefa.wchampions': { nom: 'Ligue des champions féminine', debut: 'aout', buteurs: true },
     'fra.w.1': { nom: 'Arkema Première Ligue', debut: 'aout', buteurs: true },
     'tsdb:4689': { nom: 'K League 1 (Corée du Sud)', debut: 'janv', src: 'tsdb', saison: 'annee' },   // via TheSportsDB
