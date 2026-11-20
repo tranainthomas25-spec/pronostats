@@ -206,6 +206,57 @@
   };
   const probas = x => { const o = Object.assign({}, x.p, miTemps(x) || {}); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
 
+
+  /* ---------- Onglet « Buteurs » : buteurs et joueurs décisifs de chaque match ---------- */
+  let modeB = 'but';
+  try { modeB = localStorage.getItem('ps_modeb') || 'but'; } catch (e) {}
+  const SEUIL_B = 0.32;
+  function vueButeurs() {
+    const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
+    const modes = `<div class="rk" style="margin-top:8px"><button class="rkb ${modeB === 'but' ? 'on' : ''}" data-modeb="but">⚽ Buteurs<small>marque au moins 1 but</small></button><button class="rkb ${modeB === 'dec' ? 'on' : ''}" data-modeb="dec">⚡ Décisifs<small>but ou passe décisive</small></button></div>`;
+    const tous = duJour();
+    if (!tous.length) return jours + modes + `<div class="empty">Aucun match ${jourP === 'auj' ? "aujourd'hui" : jourP === 'dem' ? 'demain' : 'cette semaine'} 😴</div>`;
+    const comps = [...new Set(tous.map(x => x.comp))];
+    if (compP !== 'Tous' && !comps.includes(compP)) compP = 'Tous';
+    const liste = listeCourante();
+    const dec = modeB === 'dec', cle = dec ? 'pdec' : 'p', pref = dec ? 'P:' : 'B:';
+    const parMatch = liste.map((x, i) => ({ x: x, i: i, j: (dec ? decisifsMatch(x) : buteursMatch(x)) }));
+    const top = [];
+    parMatch.forEach(m => m.j.forEach(b => { if (b[cle] >= SEUIL_B) top.push(Object.assign({ x: m.x, i: m.i }, b)); }));
+    top.sort((a, b) => b[cle] - a[cle]);
+    const stat = b => dec ? `${b.buts} buts + ${b.pd} passes en ${b.matchs} matchs` : `${b.buts} buts en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''}`;
+    let h = jours + modes + chips(comps, compP, 'pcomp');
+    h += `<h2 class="secth">🔥 ${dec ? 'Les décisifs' : 'Les buteurs'} de 32 % à 100 % <small>${top.length} joueur${top.length > 1 ? 's' : ''}</small></h2>`;
+    if (!top.length) h += `<div class="empty">Aucun joueur au-dessus de 32 % pour ces matchs.<br>Regarde le détail par match juste en dessous.</div>`;
+    else h += `<div class="card group">${top.map((b, k) => `
+        <div class="pk" data-pm="${b.i}" data-pk="${esc(pref + b.joueur)}" style="${k ? 'border-top:1px solid var(--line)' : ''}">
+          <span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>
+          <div style="min-width:0"><div class="s">${esc(b.joueur)}</div>
+            <div class="m">${esc(b.equipe)} · ${esc(b.x.dom)} – ${esc(b.x.ext)} · ${libJour(b.x.date)} ${heure(b.x.date)}</div>
+            <div class="m">${stat(b)} · cote juste ${cote(b[cle])}</div>
+            <div class="bar"><i style="width:${pct(b[cle])}%"></i></div></div>
+          ${ring(b[cle], true)}</div>`).join('')}</div>`;
+    h += `<h2 class="secth">📋 Match par match <small>${dec ? 'décisifs' : 'buteurs'} possibles de chaque équipe</small></h2>`;
+    const avec = parMatch.filter(m => m.j.length);
+    if (!avec.length) h += `<div class="empty">Pas assez de données sur les joueurs pour ces matchs.</div>`;
+    avec.forEach(m => {
+      const x = m.x;
+      const col = eq => {
+        const js = m.j.filter(b => b.equipe === eq);
+        return `<div style="min-width:0"><div class="m" style="font-weight:700;margin-bottom:4px">${esc(eq)}</div>${js.length ? js.map(b => `
+          <div class="pk" data-pm="${m.i}" data-pk="${esc(pref + b.joueur)}" style="grid-template-columns:1fr auto;gap:8px;padding:6px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0"><div class="s" style="font-size:14px">${esc(b.joueur)}</div><div class="m">${dec ? b.buts + ' b. + ' + b.pd + ' p.' : b.buts + ' buts'} en ${b.matchs} m.</div></div>
+            <b style="white-space:nowrap;${b[cle] >= SEUIL_B ? 'color:var(--win)' : ''}">${pct(b[cle])} %</b></div>`).join('') : '<div class="m">—</div>'}</div>`;
+      };
+      h += `<div class="card" style="margin-bottom:10px">
+        <div class="m" style="margin-bottom:6px">${esc(x.comp)} · ${libJour(x.date)} ${heure(x.date)}${faible(x) ? ' · ⚠ peu de matchs' : ''}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${col(x.dom)}${col(x.ext)}</div></div>`;
+    });
+    const sans = parMatch.length - avec.length;
+    if (sans) h += `<div class="empty" style="font-size:13px">${sans} match${sans > 1 ? 's' : ''} sans données de buteurs (championnat sans le détail des buts).</div>`;
+    return h;
+  }
+
   function vuePronos() {
     const jours = `<div class="rk">${JOURS.map(j => `<button class="rkb ${j.id === jourP ? 'on' : ''}" data-jour="${j.id}">${j.nom}<small>${j.d == null ? 'tous les matchs' : futurs().filter(x => ecartJour(x.date) === j.d).length + ' match(s)'}</small></button>`).join('')}</div>`;
     if (!futurs().length) return `<div class="empty">Pas encore de pronos.<br>Ils arrivent à la prochaine mise à jour (toutes les heures).</div>`;
@@ -649,23 +700,29 @@
 
   /* ---------- Intégration à l'appli ---------- */
   const nav = $('#tabs');
-  nav.style.gridTemplateColumns = 'repeat(5,1fr)';
+  nav.style.gridTemplateColumns = 'repeat(6,1fr)';
   const b = document.createElement('button');
   b.dataset.tab = 'pronos';
   b.innerHTML = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span>Pronos</span>`;
   nav.insertBefore(b, nav.firstChild);
+  const bB = document.createElement('button');
+  bB.dataset.tab = 'buteurs';
+  bB.innerHTML = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z"/></svg><span>Buteurs</span>`;
+  nav.insertBefore(bB, b.nextSibling);
 
   const rendreBase = rendre;
   rendre = function () {
-    if (tab !== 'pronos') return rendreBase();
+    if (tab !== 'pronos' && tab !== 'buteurs') return rendreBase();
     if (!D) return;
     $('#maj').textContent = D.maj || '';
     $('#fab').hidden = true;
-    $('#view').innerHTML = vuePronos();
+    $('#view').innerHTML = tab === 'buteurs' ? vueButeurs() : vuePronos();
   };
 
   $('#view').addEventListener('click', e => {
-    if (tab !== 'pronos') return;
+    if (tab !== 'pronos' && tab !== 'buteurs') return;
+    const mb = e.target.closest('[data-modeb]');
+    if (mb) { modeB = mb.dataset.modeb; try { localStorage.setItem('ps_modeb', modeB); } catch (er) {} rendre(); return; }
     if (e.target.closest('[data-bilan]')) { ficheBilan(); return; }
     const cl = e.target.closest('[data-cavl]');
     if (cl && comboAV) { const l = comboAV.legs[+cl.dataset.cavl]; ficheMatch(l.x, l.m); return; }
