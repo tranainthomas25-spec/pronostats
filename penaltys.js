@@ -2,10 +2,12 @@
    Les calculs sont faits chaque jour par GitHub (outils/arbitres.mjs) à partir de l'API publique de l'UEFA
    et rangés dans arbitres.json. Ici on se contente de les lire et de les afficher. */
 (function () {
-  const SOURCES = ['https://raw.githubusercontent.com/tranainthomas25-spec/pronostats/main/arbitres.json', 'arbitres.json'];
+  const RAW = 'https://raw.githubusercontent.com/tranainthomas25-spec/pronostats/main/';
+  const SOURCES = [RAW + 'arbitres.json', 'arbitres.json'], SOURCES_L = [RAW + 'ligues.json', 'ligues.json'];
   const CLE = 'ps_penos_v1', DELAI = 20 * 60 * 1000, MARGE = 0.05;
-  let A = null, enCours = false, jourK = 'tous', compK = 'Tous';
+  let A = null, L = null, TOUS = [], enCours = false, jourK = 'tous', compK = 'Tous';
   try { A = JSON.parse(localStorage.getItem(CLE)); } catch (e) {}
+  try { L = JSON.parse(localStorage.getItem(CLE + '_l')); } catch (e) {}
 
   const CSS = `
 .pn-card{cursor:pointer;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center}
@@ -59,6 +61,17 @@
         break;
       } catch (e) {}
     }
+    for (const u of SOURCES_L) {
+      try {
+        const r = await fetch(u + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (!j || !j.prochains) continue;
+        L = j;
+        try { localStorage.setItem(CLE + '_l', JSON.stringify(j)); } catch (e) {}
+        break;
+      } catch (e) {}
+    }
     enCours = false;
     if (tab === 'penos') rendre();
   }
@@ -74,7 +87,7 @@
         <div class="ar">${a ? `👤 ${esc(a.nom)} <span style="color:var(--muted)">(${esc(a.pays)})</span> · <b>${a.n ? dec(a.taux) : '–'}</b> péno/match<span class="fb ${x.fiab}">${a.n} m.</span>` : '👤 Arbitre pas encore désigné'}</div>
         <div class="pn-f">
           <span class="pill ${cls(f.arbitre)}">Arbitre ${facteur(f.arbitre)}</span>
-          <span class="pill ${cls(f.var)}">VAR ${facteur(f.var)}</span>
+          ${x.ligue ? '' : `<span class="pill ${cls(f.var)}">VAR ${facteur(f.var)}</span>`}
           <span class="pill ${cls(f.equipes)}">Équipes ${facteur(f.equipes)}</span>
           <span class="pill g">Cote juste ${cote(x.proba)}</span>
         </div>
@@ -87,9 +100,10 @@
       return `<div class="empty">Chargement des arbitres…<br><small>Si ça dure, la première mise à jour automatique n'a pas encore tourné sur GitHub.</small></div>`;
     }
     const b = A.base || {};
-    let h = `<div class="card pn-intro">En Coupe d'Europe, <b>${pct(b.avecPenalty || 0)} %</b> des matchs ont au moins un penalty (<b>${dec(b.parMatch)}</b> par match, sur ${b.matchs || 0} matchs). Le % de chaque match part de cette moyenne, corrigée selon <b>l'arbitre</b>, <b>la VAR</b> et ce que <b>les deux équipes</b> obtiennent / concèdent.</div>`;
+    let h = `<div class="card pn-intro">En Coupe d'Europe, <b>${pct(b.avecPenalty || 0)} %</b> des matchs ont au moins un penalty (<b>${dec(b.parMatch)}</b> par match, sur ${b.matchs || 0} matchs). Le % de chaque match part de cette moyenne, corrigée selon <b>l'arbitre</b>, <b>la VAR</b> et ce que <b>les deux équipes</b> obtiennent / concèdent.${L && L.bases ? '<br>En championnat : ' + Object.entries(L.bases).map(([k, v]) => `${esc(k)} <b>${dec(v.parMatch)}</b>`).join(' · ') + ' penalty/match.' : ''}</div>`;
 
-    const futurs = (A.prochains || []).map((x, i) => Object.assign({ _i: i }, x));
+    TOUS = (A.prochains || []).concat(L ? L.prochains || [] : []);
+    const futurs = TOUS.map((x, i) => Object.assign({ _i: i }, x));
     const jours = [...new Set(futurs.map(x => jourDe(x.date)))].sort((a, c) => a - c);
     if (jourK !== 'tous' && !jours.includes(+jourK)) jourK = 'tous';
     h += `<div class="rk"><button class="rkb ${jourK === 'tous' ? 'on' : ''}" data-pjour="tous">Tous<small>${futurs.length} match(s)</small></button>` +
@@ -116,8 +130,13 @@
       h += `<h2 class="secth">Arbitres qui sifflent le plus<small>10 matchs minimum</small></h2><div class="card">` +
         cl.slice(0, 10).map((a, k) => `<div class="pn-row"><span>${k + 1}. ${esc(a.nom)} <span style="color:var(--muted)">(${esc(a.pays)})</span></span><span class="v">${dec(a.taux)}</span><small>${a.pens} penalties en ${a.n} matchs</small></div>`).join('') + `</div>`;
     }
+    const clL = L ? L.classement || [] : [];
+    if (clL.length) {
+      h += `<h2 class="secth">Arbitres de championnat qui sifflent le plus<small>8 matchs minimum</small></h2><div class="card">` +
+        clL.slice(0, 10).map((a, k) => `<div class="pn-row"><span>${k + 1}. ${esc(a.nom)} <span style="color:var(--muted)">(${esc(a.ligue)})</span></span><span class="v">${dec(a.taux)}</span><small>${a.pens} penalties en ${a.n} matchs</small></div>`).join('') + `</div>`;
+    }
 
-    const rec = A.recents || [];
+    const rec = (A.recents || []).concat(L ? L.recents || [] : []);
     if (rec.length) {
       const moyP = rec.reduce((s, x) => s + x.proba, 0) / rec.length, reel = rec.filter(x => x.reel > 0).length / rec.length;
       const top = rec.slice().sort((a, c) => c.proba - a.proba).slice(0, Math.max(3, Math.round(rec.length / 4)));
@@ -126,24 +145,25 @@
         <div class="pn-big"><div><b>${pct(moyP)} %</b><small>prévu en moyenne</small></div><div><b>${pct(reel)} %</b><small>avec penalty en vrai</small></div><div><b>${topR}/${top.length}</b><small>le quart « chaud » avec péno</small></div></div>` +
         rec.slice().sort((a, c) => (c.date > a.date ? 1 : -1)).slice(0, 12).map(x => `<div class="pn-row"><span>${esc(x.dom)} – ${esc(x.ext)}</span><span class="v ${x.reel ? 'oui' : 'non'}">${x.reel ? '✅ ' + x.reel + ' péno' : '–'}</span><small>prévu ${pct(x.proba)} % · ${x.arbitre ? esc(x.arbitre.nom) : '?'}</small></div>`).join('') + `</div>`;
     }
-    h += `<div class="maj" style="padding:4px 2px 0">Stats d'arbitres mises à jour le ${new Date(A.maj).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${esc(A.source || '')}</div>`;
+    h += `<div class="maj" style="padding:4px 2px 0">Stats d'arbitres mises à jour le ${new Date(A.maj).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${esc(A.source || '')}${L ? ' + ' + esc(L.source) + (L.enAttente ? ` (${L.enAttente} matchs encore à analyser)` : '') : ''}</div>`;
     return h;
   }
 
   function fichePeno(i) {
-    const x = (A.prochains || [])[i]; if (!x) return;
+    const x = TOUS[i]; if (!x) return;
+    const ou = x.ligue ? 'matchs de championnat' : 'matchs européens';
     const a = x.arbitre, v = x.var, e = x.equipes || {};
-    const eqL = (nom, s) => s ? `<div class="pn-row"><span>${esc(nom)}</span><span class="v">${dec(s.obt / s.n)} / ${dec(s.conc / s.n)}</span><small>${s.obt} penalties obtenus et ${s.conc} concédés en ${s.n} matchs européens</small></div>`
-      : `<div class="pn-row"><span>${esc(nom)}</span><span class="v">–</span><small>Pas assez de matchs européens récents : moyenne utilisée</small></div>`;
+    const eqL = (nom, s) => s ? `<div class="pn-row"><span>${esc(nom)}</span><span class="v">${dec(s.obt / s.n)} / ${dec(s.conc / s.n)}</span><small>${s.obt} penalties obtenus et ${s.conc} concédés en ${s.n} ${ou}</small></div>`
+      : `<div class="pn-row"><span>${esc(nom)}</span><span class="v">–</span><small>Pas assez de ${ou} récents : moyenne utilisée</small></div>`;
     ouvrir(`<h3>${esc(x.dom)} – ${esc(x.ext)}</h3>
       <div style="color:var(--muted);margin-top:-8px">${esc(x.comp)} · ${nomJour(jourDe(x.date))} ${heure(x.date)}</div>
       <div class="pn-big" style="margin-top:12px"><div><b>${pct(x.proba)} %</b><small>au moins 1 penalty</small></div><div><b>${pct(x.penDom)} %</b><small>pour ${esc(x.dom)}</small></div><div><b>${pct(x.penExt)} %</b><small>pour ${esc(x.ext)}</small></div></div>
       <h4>Arbitre</h4>
-      ${a ? `<div class="pn-row"><span>${esc(a.nom)} (${esc(a.pays)})<span class="fb ${x.fiab}">${x.fiab}</span></span><span class="v">${a.n ? dec(a.taux) : '–'}</span><small>${a.pens} penalties en ${a.n} matchs européens (3 saisons) · taux retenu après prudence : ${dec(a.lisse)}</small></div>
+      ${a ? `<div class="pn-row"><span>${esc(a.nom)} (${esc(a.pays)})<span class="fb ${x.fiab}">${x.fiab}</span></span><span class="v">${a.n ? dec(a.taux) : '–'}</span><small>${a.pens} penalties en ${a.n} ${ou} (${x.ligue ? '2 saisons' : '3 saisons'}) · taux retenu après prudence : ${dec(a.lisse)}</small></div>
         ${(a.hist || []).map(m => `<div class="pn-row"><span style="font-size:13px">${esc(m.m)}</span><span class="v ${m.p ? 'oui' : 'non'}">${m.p ? m.p + ' péno' : '0'}</span><small>${esc(m.c)} · ${new Date(m.d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })}</small></div>`).join('')}`
         : `<div class="pn-row"><span>Pas encore désigné</span></div>`}
       <h4>VAR</h4>
-      ${v ? `<div class="pn-row"><span>${esc(v.nom)} (${esc(v.pays)})</span><span class="v">${v.n ? dec(v.pens / v.n) : '–'}</span><small>${v.pens} penalties dans ${v.n} matchs où il était à la vidéo</small></div>` : `<div class="pn-row"><span>Pas encore désignée</span></div>`}
+      ${v ? `<div class="pn-row"><span>${esc(v.nom)} (${esc(v.pays)})</span><span class="v">${v.n ? dec(v.pens / v.n) : '–'}</span><small>${v.pens} penalties dans ${v.n} matchs où il était à la vidéo</small></div>` : `<div class="pn-row"><span>${x.ligue ? 'Pas de données VAR pour les championnats' : 'Pas encore désignée'}</span></div>`}
       <h4>Équipes (obtenus / concédés par match)</h4>
       ${eqL(x.dom, e.dom)}${eqL(x.ext, e.ext)}
       <h4>Ta cote « Penalty dans le match : Oui »</h4>
