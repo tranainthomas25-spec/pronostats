@@ -18,11 +18,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Calcul des stats d'arbitres
+      - name: Coupes d'Europe (UEFA)
         run: node outils/arbitres.mjs
-      - name: Enregistrer arbitres.json
+        continue-on-error: true
+      - name: 5 grands championnats (API-Football)
+        run: node outils/ligues.mjs
+        continue-on-error: true
+        env:
+          APIFOOTBALL_KEY: ${{ secrets.APIFOOTBALL_KEY }}
+      - name: Enregistrer les fichiers
         run: |
           git config user.name "pronostats-bot"
           git config user.email "pronostats-bot@users.noreply.github.com"
-          git add arbitres.json
+          for f in arbitres.json ligues.json ligues-cache.json; do [ -f "$f" ] && git add "$f"; done
           git diff --cached --quiet || (git commit -m "Mise à jour des stats d'arbitres" && git push)
