@@ -100,7 +100,7 @@
       return `<div class="empty">Chargement des arbitres…<br><small>Si ça dure, la première mise à jour automatique n'a pas encore tourné sur GitHub.</small></div>`;
     }
     const b = A.base || {};
-    let h = `<div class="card pn-intro">En Coupe d'Europe, <b>${pct(b.avecPenalty || 0)} %</b> des matchs ont au moins un penalty (<b>${dec(b.parMatch)}</b> par match, sur ${b.matchs || 0} matchs). Le % de chaque match part de cette moyenne, corrigée selon <b>l'arbitre</b>, <b>la VAR</b> et ce que <b>les deux équipes</b> obtiennent / concèdent.${L && L.bases ? '<br>En championnat : ' + Object.entries(L.bases).map(([k, v]) => `${esc(k)} <b>${dec(v.parMatch)}</b>`).join(' · ') + ' penalty/match.' : ''}</div>`;
+    let h = `<div class="card pn-intro">En Coupe d'Europe, <b>${pct(b.avecPenalty || 0)} %</b> des matchs ont au moins un penalty (<b>${dec(b.parMatch)}</b> par match, sur ${b.matchs || 0} matchs). Le % de chaque match part de cette moyenne, corrigée selon <b>l'arbitre</b>, <b>la VAR</b> et ce que <b>les deux équipes</b> obtiennent / concèdent.${L && L.bases && Object.keys(L.bases).length ? '<br>En championnat : ' + Object.entries(L.bases).map(([k, v]) => `${esc(k)} <b>${dec(v.parMatch)}</b>`).join(' · ') + ' penalty/match.' : ''}</div>`;
 
     TOUS = (A.prochains || []).concat(L ? L.prochains || [] : []);
     const futurs = TOUS.map((x, i) => Object.assign({ _i: i }, x));
