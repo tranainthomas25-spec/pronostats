@@ -14,7 +14,7 @@
 .pn-card .ar{margin-top:6px;font-size:13px}
 .pn-card .ar b{color:var(--gold2)}
 .pn-f{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.pn-f .pill.up{background:rgba(63,191,127,.14);color:var(--win)}
+.pn-f .pill.up{background:rgba(110,200,255,.16);color:#7FD0FF}
 .pn-f .pill.dn{background:rgba(226,98,94,.12);color:var(--loss)}
 .fb{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;vertical-align:1px}
 .fb.solide{background:rgba(63,191,127,.15);color:var(--win)}
@@ -42,7 +42,7 @@
   const nomJour = n => n === 0 ? "Aujourd'hui" : n === 1 ? 'Demain' : new Date(Date.now() + n * 864e5).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' });
   const heure = iso => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const facteur = f => { const v = Math.round((f - 1) * 100); return v === 0 ? '=' : (v > 0 ? '+' : '') + v + ' %'; };
-  const cls = f => f > 1.04 ? 'up' : f < 0.96 ? 'dn' : '';
+  const cls = f => Math.round((f - 1) * 100) > 0 ? 'up' : Math.round((f - 1) * 100) < 0 ? 'dn' : '';
 
   async function chargerPenos(force) {
     if (enCours) return;
