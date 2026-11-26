@@ -122,6 +122,8 @@
     return { lD: lD, lE: lE, score: best[0] + '-' + best[1], fiab: Math.min(a.n, b.n) < P.MJ_FAIBLE ? '⚠ Échantillon faible' : '✔ OK', p: p };
   }
 
+  window.PS_MODELE = { profils: profils, prono: prono, P: P, LIGUES: LIGUES, CLE: CLE };   // partagé avec reussite.js
+
   /* ---------- Bilan du modèle (rejoué sur les matchs déjà joués, avec seulement les données d'avant) ---------- */
   const NIV = [['sur', 0.75, 1.01], ['equi', 0.60, 0.75], ['audace', 0.45, 0.60]];
   const gagne = (k, h, a) => [h + a > 1, h + a > 2, h + a > 3, h > 0, h > 1, h > 2, a > 0, a > 1, a > 2,

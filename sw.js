@@ -1,5 +1,5 @@
-const CACHE = 'pronostats-v29';
-const SHELL = ['./', 'index.html', 'pronos.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'pronostats-v30';
+const SHELL = ['./', 'index.html', 'pronos.js', 'ligues.js', 'reussite.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

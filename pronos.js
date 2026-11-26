@@ -96,6 +96,16 @@
 .verdict.no{background:rgba(226,98,94,.12);color:var(--loss)}
 .verdict.warn{background:rgba(224,164,88,.14);color:#E0A458}
 .disc{color:var(--muted);font-size:11.5px;text-align:center;margin:18px 6px 0;line-height:1.5}
+.scg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+.scg>div{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:7px 4px;text-align:center;cursor:pointer}
+.scg>div.on{border-color:var(--gold);background:var(--gold-dim)}
+.scg b{display:block;font:700 20px "Barlow Condensed",sans-serif;color:var(--text)}
+.scg small{display:block;color:var(--gold2);font-weight:700;font-size:12.5px}
+.scg>div:first-child b{color:var(--gold2)}
+.scm{padding:10px 14px;cursor:pointer}.scm+.scm{border-top:1px solid var(--line)}
+.scm .m{color:var(--muted);font-size:12.5px}.scm .s{font-weight:600}
+.reu{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}.reu b{color:var(--text)}
+.bil-btn.bt2{margin-top:8px}
 .secth{display:flex;justify-content:space-between;align-items:baseline}
 .secth small{color:var(--muted);font:500 12px Barlow;text-transform:none;letter-spacing:0}
 
@@ -142,14 +152,14 @@
     'Victoire domicile (1)': 'Victoire {D}', 'Match nul (N)': 'Match nul', 'Victoire extérieur (2)': 'Victoire {E}',
     'Double chance 1N': '{D} ou nul', 'Double chance N2': '{E} ou nul', 'Double chance 12': 'Pas de nul',
   };
-  const TYPE = m => /^MT:/.test(m) ? '1N2' : /^B:/.test(m) ? 'Buteur' : /^P:/.test(m) ? 'Autre' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
+  const TYPE = m => /^MT:/.test(m) ? '1N2' : /^B:/.test(m) ? 'Buteur' : /^[PS]:/.test(m) ? 'Autre' : /^Over|Over/.test(m) ? 'Plus/Moins buts' : /deux équipes/.test(m) ? 'Les deux marquent'
     : /Double chance/.test(m) ? 'Double chance' : '1N2';
   const MARGE = 0.05, SUSPECT = 0.25;
-  let niveau = 'sur', compP = 'Tous', jourP = 'auj';
+  let niveau = 'sur', compP = 'Tous', jourP = 'auj', voirScores = false;
   const JOURS = [{ id: 'auj', nom: "📅 Aujourd'hui", d: 0 }, { id: 'dem', nom: '⏭️ Demain', d: 1 }, { id: 'sem', nom: '🗓️ 7 jours', d: null }];
   try { niveau = localStorage.getItem('ps_niveau') || 'sur'; } catch (e) {}
 
-  const lib = (m, x) => /^MT:/.test(m) ? ({ 'MT:1': x.dom + ' mène à la mi-temps', 'MT:N': 'Nul à la mi-temps', 'MT:2': x.ext + ' mène à la mi-temps' })[m] : /^B:/.test(m) ? m.slice(2) + ' buteur' : /^P:/.test(m) ? m.slice(2) + ' décisif (but ou passe)' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
+  const lib = (m, x) => /^S:/.test(m) ? 'Score exact ' + x.dom + ' ' + m.slice(2) + ' ' + x.ext : /^MT:/.test(m) ? ({ 'MT:1': x.dom + ' mène à la mi-temps', 'MT:N': 'Nul à la mi-temps', 'MT:2': x.ext + ' mène à la mi-temps' })[m] : /^B:/.test(m) ? m.slice(2) + ' buteur' : /^P:/.test(m) ? m.slice(2) + ' décisif (but ou passe)' : (LIB[m] || m).replace('{D}', x.dom).replace('{E}', x.ext);
   const pct = p => Math.round(p * 100);
   const cote = p => (1 / p).toFixed(2).replace('.', ',');
   const coteMin = p => (1 / p * (1 + MARGE)).toFixed(2).replace('.', ',');
@@ -204,7 +214,9 @@
     for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) { const v = po(i, a) * po(j, b); if (i > j) p1 += v; else if (i === j) pN += v; else p2 += v; }
     return { 'MT:1': p1, 'MT:N': pN, 'MT:2': p2 };
   };
-  const probas = x => { const o = Object.assign({}, x.p, miTemps(x) || {}); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
+  const RE = () => window.PS_REUSSITE;
+  const scoresMatch = x => RE() ? RE().scores(x.lD, x.lE) : [];
+  const probas = x => { const o = Object.assign({}, x.p, miTemps(x) || {}); scoresMatch(x).forEach(s => o['S:' + s.s] = s.p); joueursMatch(x).forEach(b => { if (b.p != null) o['B:' + b.joueur] = b.p; if (b.pdec != null) o['P:' + b.joueur] = b.pdec; }); return o; };
 
 
   /* ---------- Onglet « Buteurs » : buteurs et joueurs décisifs de chaque match ---------- */
@@ -225,7 +237,7 @@
     parMatch.forEach(m => m.j.forEach(b => { if (b[cle] >= SEUIL_B) top.push(Object.assign({ x: m.x, i: m.i }, b)); }));
     top.sort((a, b) => b[cle] - a[cle]);
     const stat = b => dec ? `${b.buts} buts + ${b.pd} passes en ${b.matchs} matchs` : `${b.buts} buts en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''}`;
-    let h = jours + modes + chips(comps, compP, 'pcomp');
+    let h = jours + modes + resumeReuB(dec) + chips(comps, compP, 'pcomp');
     h += `<h2 class="secth">🔥 ${dec ? 'Les décisifs' : 'Les buteurs'} de 32 % à 100 % <small>${top.length} joueur${top.length > 1 ? 's' : ''}</small></h2>`;
     if (!top.length) h += `<div class="empty">Aucun joueur au-dessus de 32 % pour ces matchs.<br>Regarde le détail par match juste en dessous.</div>`;
     else h += `<div class="card group">${top.map((b, k) => `
@@ -342,6 +354,19 @@
           ${ring(b.pdec, true)}</div>`).join('')}</div>`;
     }
 
+    const avecSc = liste.map((x, i) => ({ x: x, i: i, sc: scoresMatch(x) })).filter(m => m.sc.length)
+      .sort((a, b) => a.x.date.localeCompare(b.x.date));
+    if (avecSc.length) {
+      const vus = voirScores ? avecSc : avecSc.slice(0, 6), r = reuS(compP === 'Tous' ? null : compP) || reuS();
+      h += `<h2 class="secth">🎯 Scores exacts ${quand} <small>${avecSc.length} match${avecSc.length > 1 ? 's' : ''}</small></h2>
+      ${r ? `<button class="bil-btn" data-bilan="1" style="margin-top:0"><div>📊 Réussite des scores exacts<small>${r.t4.n} matchs rejoués · score n°1 trouvé ${tx(r.t1)} % des fois</small></div><b>${tx(r.t4)} % ✓<small style="text-align:right">un des 4</small></b></button>` : ''}
+      <div class="card group" style="margin-top:8px">${vus.map(m => `<div class="scm" data-pm="${m.i}" data-pk="${esc('S:' + m.sc[0].s)}">
+        <div class="s">${esc(m.x.dom)} – ${esc(m.x.ext)}</div>
+        <div class="m">${esc(m.x.comp)} · ${jourP === 'auj' ? '' : libJour(m.x.date) + ' '}${heure(m.x.date)} · un des 4 : ${pct(m.sc.reduce((a, s) => a + s.p, 0))} %${faible(m.x) ? ' · ⚠ peu de matchs' : ''}</div>
+        <div class="scg">${m.sc.map(s => `<div><b>${s.s}</b><small>${pct(s.p)} %</small></div>`).join('')}</div></div>`).join('')}</div>
+      ${avecSc.length > 6 ? `<button class="ghost" data-voirsc="1">${voirScores ? 'Voir moins' : 'Voir les ' + (avecSc.length - 6) + ' autres matchs'}</button>` : ''}`;
+    }
+
     const parHeure = triSel === 'heure';
     const liste2 = parHeure ? sels.slice().sort((a, b) => a.x.date.localeCompare(b.x.date) || (b.p - a.p)) : sels.slice(0, 30);
     h += `<h2 class="secth">🏆 ${parHeure ? 'Les sélections' : 'Classement des sélections'} <small>${sels.length} match${sels.length > 1 ? 's' : ''}</small></h2>
@@ -382,7 +407,8 @@
     return `<button class="bil-btn" data-bilan="1"><div>📊 Bilan du modèle<small>${o.n} sélections « Sûr » rejouées cette saison</small></div><b>${tx(o)} % ✓</b></button>`;
   }
   function ficheBilan() {
-    const comps = [...new Set((D.bilan || []).map(b => b.comp))].sort();
+    const RD = RE() && RE().data;
+    const comps = [...new Set((D.bilan || []).map(b => b.comp).concat(RD ? RD.agg.map(b => b.comp) : []))].sort();
     if (bilComp !== 'Tous' && comps.indexOf(bilComp) < 0) bilComp = 'Tous';
     const f = b => b.per === bilPer && (bilComp === 'Tous' || b.comp === bilComp);
     const ligne = (lbl, o) => { const r = tx(o), pr = txp(o); return `<tr><td>${lbl}</td><td>${o.n}</td><td><b class="${r >= pr - 3 ? 'ok' : 'ko'}">${r} %</b></td><td>${pr} %</td></tr>`; };
@@ -391,8 +417,9 @@
       <div class="rk" style="margin:0"><button class="rkb ${bilPer === 'tout' ? 'on' : ''}" data-bper="tout">Toute la saison</button><button class="rkb ${bilPer === '30j' ? 'on' : ''}" data-bper="30j">30 derniers jours</button></div>
       <div class="chips" style="margin-top:8px">${['Tous'].concat(comps).map(c => `<button class="chip ${c === bilComp ? 'on' : ''}" data-bcomp="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     const niv = ['sur', 'equi', 'audace'].map(n => [n, bilanSomme(b => f(b) && b.type === 'niv' && b.cle === n)]);
-    if (!niv.some(x => x[1].n)) return ouvrir(h + `<div class="empty">Pas encore assez de matchs joués pour ce choix.</div>`), lierBilan();
-    h += `<label style="margin-top:14px">Réussite par niveau (prévu par le modèle entre parenthèses)</label><div class="bk">${niv.map(([n, o]) =>
+    const extra = blocBilanReussite(f);
+    if (!niv.some(x => x[1].n)) return ouvrir(h + (extra || `<div class="empty">Pas encore assez de matchs joués pour ce choix.</div>`)), lierBilan();
+    h += extra + `<label style="margin-top:14px">Réussite par niveau (prévu par le modèle entre parenthèses)</label><div class="bk">${niv.map(([n, o]) =>
       `<div><small>${NOMNIV[n]}</small><b>${o.n ? tx(o) + ' %' : '–'}</b><small>${o.n ? '(prévu ' + txp(o) + ' %)<br>' + o.ok + '/' + o.n + ' gagnées' : 'aucune'}</small></div>`).join('')}</div>`;
     const mk = {};
     (D.bilan || []).filter(b => f(b) && b.type === 'mk').forEach(b => { const o = mk[b.cle] = mk[b.cle] || { n: 0, ok: 0, sp: 0 }; o.n += b.n; o.ok += b.ok; o.sp += b.sp; });
@@ -411,10 +438,74 @@
     h += `<p class="disc" style="margin-top:14px">En vert : le modèle tient ses promesses (réussite ≥ prévu − 3 pts). En rouge : il est trop optimiste sur ce point.</p>`;
     ouvrir(h); lierBilan();
   }
+  function blocBilanReussite(f) {
+    const R = RE();
+    if (!R || !R.data) return `<div class="reu" style="margin-top:14px">⏳ Réussite des buteurs et des scores exacts : calcul en cours…</div>`;
+    const S = filt => R.somme(b => f(b) && filt(b));
+    const ligne = (lbl, o) => { const r = tx(o), pr = txp(o); return `<tr><td>${lbl}</td><td>${o.n}</td><td><b class="${r >= pr - 3 ? 'ok' : 'ko'}">${r} %</b></td><td>${pr} %</td></tr>`; };
+    let h = '';
+    const prop = S(b => b.type === 'but' && b.cle === 'prop');
+    if (prop.n) {
+      const tr = [['20', '20 – 29 %'], ['30', '30 – 39 %'], ['40', '40 – 49 %'], ['50', '50 % et +']].map(([c, l]) => [l, S(b => b.type === 'but' && b.cle === c)]).filter(x => x[1].n);
+      h += `<label style="margin-top:14px">⚽ Réussite des buteurs</label>
+        <div class="bk" style="grid-template-columns:1fr 1fr"><div><small>Buteurs proposés (32 % et +)</small><b>${tx(prop)} %</b><small>${prop.ok}/${prop.n} ont marqué<br>(prévu ${txp(prop)} %)</small></div>
+        <div><small>Cote juste moyenne</small><b>${(prop.n / prop.sp).toFixed(2).replace('.', ',')}</b><small>rentable si ta cote est plus haute${tx(prop) < txp(prop) - 3 ? ' (vise même ' + (prop.n / prop.ok).toFixed(2).replace('.', ',') + ')' : ''}</small></div></div>
+        <table class="bt"><tr><th>Annoncé</th><th>Nb</th><th>Ont marqué</th><th>Prévu</th></tr>${tr.map(([l, o]) => ligne(l, o)).join('')}</table>
+        <div class="reu">Rejoué avec les buts de la saison connus avant chaque match. Compte aussi les joueurs qui n'ont pas joué (blessés, remplaçants) : vérifie la compo avant de parier.</div>`;
+    }
+    const t1 = S(b => b.type === 'sc' && b.cle === 'top1'), t4 = S(b => b.type === 'sc' && b.cle === 'top4');
+    if (t4.n) {
+      const rangs = [1, 2, 3, 4].map(k => ['Score n°' + k, S(b => b.type === 'sc' && b.cle === 'r' + k)]);
+      h += `<label style="margin-top:16px">🎯 Réussite des scores exacts</label>
+        <div class="bk" style="grid-template-columns:1fr 1fr"><div><small>Score n°1 trouvé</small><b>${tx(t1)} %</b><small>${t1.ok}/${t1.n} matchs<br>(prévu ${txp(t1)} %)</small></div>
+        <div><small>Un des 4 scores trouvé</small><b>${tx(t4)} %</b><small>${t4.ok}/${t4.n} matchs<br>(prévu ${txp(t4)} %)</small></div></div>
+        <table class="bt"><tr><th>Proposition</th><th>Nb</th><th>Trouvé</th><th>Prévu</th></tr>${rangs.map(([l, o]) => ligne(l, o)).join('')}</table>`;
+    }
+    const D10 = R.data, cf = x => bilComp === 'Tous' || x.comp === bilComp;
+    const hb = D10.histoBt.filter(cf).slice(0, 20);
+    if (hb.length) h += `<label style="margin-top:16px">Les derniers buteurs proposés (10 derniers jours)</label>
+      ${hb.map(x => `<div class="hi"><span class="r">${x.ok ? '✅' : '❌'}</span><div><div>${esc(x.joueur)} buteur · <b>${pct(x.p)} %</b></div>
+        <div class="m">${esc(x.dom)} ${esc(x.score)} ${esc(x.ext)} · ${esc(x.comp)} · ${libJour(x.date)}</div></div></div>`).join('')}`;
+    const hs = D10.histoSc.filter(cf).slice(0, 15);
+    if (hs.length) h += `<label style="margin-top:16px">Les derniers scores exacts proposés (10 derniers jours)</label>
+      ${hs.map(x => `<div class="hi"><span class="r">${x.k ? '✅' : '❌'}</span><div><div><b>${esc(x.score)}</b> · proposés : ${x.sc.map((s, k) => k + 1 === x.k ? `<b style="color:var(--win)">${s[0]}</b>` : s[0]).join(', ')}</div>
+        <div class="m">${esc(x.dom)} – ${esc(x.ext)} · ${esc(x.comp)} · ${libJour(x.date)}</div></div></div>`).join('')}`;
+    return h;
+  }
   function lierBilan() {
     const sh = $('#sheet');
     sh.querySelectorAll('[data-bper]').forEach(el => el.onclick = () => { bilPer = el.dataset.bper; ficheBilan(); });
     sh.querySelectorAll('[data-bcomp]').forEach(el => el.onclick = () => { bilComp = el.dataset.bcomp; ficheBilan(); });
+  }
+
+  /* ---------- Réussite réelle (reussite.js) : buteurs et scores exacts ---------- */
+  const reuS = (comp, per) => { const R = RE(); if (!R || !R.data) return null;
+    const f = c => b => b.type === 'sc' && b.cle === c && b.per === (per || 'tout') && (!comp || comp === 'Tous' || b.comp === comp);
+    const t1 = R.somme(f('top1')), t4 = R.somme(f('top4'));
+    return t4.n ? { t1: t1, t4: t4 } : null; };
+  const reuB = (comp, per, cle) => { const R = RE(); if (!R || !R.data) return null;
+    const o = R.somme(b => b.type === 'but' && b.cle === (cle || 'prop') && b.per === (per || 'tout') && (!comp || comp === 'Tous' || b.comp === comp));
+    return o.n ? o : null; };
+  function texteReuS(comp) {
+    let r = reuS(comp), ou = comp;
+    if (!r || r.t4.n < 30) { r = reuS(); ou = null; }
+    if (!r) return RE() && !RE().pret ? '⏳ Calcul de la réussite des scores en cours…' : '';
+    return `📊 Réussite réelle${ou ? ' en ' + esc(ou) : ''} (${r.t4.n} matchs rejoués) : score n°1 trouvé <b>${tx(r.t1)} %</b> des fois · un des 4 scores <b>${tx(r.t4)} %</b> (prévu ${txp(r.t4)} %)`;
+  }
+  function blocScoresFiche(x, focus) {
+    const sc = scoresMatch(x); if (!sc.length) return '';
+    const tot = sc.reduce((a, s) => a + s.p, 0);
+    return `<label style="margin-top:4px">🎯 Scores exacts possibles (touche pour tester)</label>
+      <div class="scg">${sc.map(s => `<div data-mk="${esc('S:' + s.s)}" class="${focus === 'S:' + s.s ? 'on' : ''}"><b>${s.s}</b><small>${pct(s.p)} %</small><small style="color:var(--muted);font-weight:500">cote ${cote(s.p)}</small></div>`).join('')}</div>
+      <div class="reu">Un de ces 4 scores : <b>${pct(tot)} %</b> de chances.<br>${texteReuS(x.comp)}</div>`;
+  }
+  function resumeReuB(dec) {
+    if (dec) return '';
+    const o = reuB(compP === 'Tous' ? null : compP) || reuB();
+    if (!o) return RE() && !RE().pret ? `<div class="reu" style="margin:10px 2px 0">⏳ Calcul de la réussite des buteurs en cours…</div>` : '';
+    const o30 = reuB(compP === 'Tous' ? null : compP, '30j');
+    return `<button class="bil-btn" data-bilan="1"><div>📊 Réussite des buteurs à 32 % et +<small>${o.n} buteurs proposés et rejoués cette saison${o30 ? ' · 30 derniers jours : ' + tx(o30) + ' %' : ''}</small></div><b>${tx(o)} % ✓</b></button>
+      <div class="reu" style="margin:4px 2px 0">Le modèle annonçait ${txp(o)} % en moyenne : ${tx(o) >= txp(o) - 3 ? '✅ il tient ses promesses' : '⚠️ il est un peu trop optimiste, vise des cotes plus hautes'}.</div>`;
   }
 
   /* ---------- Fiche match ---------- */
@@ -430,6 +521,7 @@
       <div class="xg"><div><b>${fmt(x.lD && +x.lD.toFixed(2))}</b><small>buts attendus<br>${esc(x.dom)}</small></div>
         <div class="sc"><small>Score le + probable</small><b style="font-size:24px">${esc(x.score)}</b></div>
         <div><b>${fmt(x.lE && +x.lE.toFixed(2))}</b><small>buts attendus<br>${esc(x.ext)}</small></div></div>
+      ${blocScoresFiche(x, focus)}
       <label>Tester une cote · ${esc(lib(focus, x))} (${pct(P[focus])} %)</label>
       <div class="row2"><input id="vCote" type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="Cote du bookmaker">
         <button class="primary" style="margin:0" id="vAdd">+ Mes paris</button></div>
@@ -454,6 +546,7 @@
     };
     $('#vCote').oninput = test;
     sh.querySelectorAll('[data-mk]').forEach(el => el.onclick = () => ficheMatch(x, el.dataset.mk));
+    sh.querySelectorAll('[data-bilan2]').forEach(el => el.onclick = () => ficheBilan());
     $('#vAdd').onclick = () => {
       const c = $('#vCote').value;
       fermer(); formPari(x.dom + ' - ' + x.ext);
@@ -733,6 +826,7 @@
     }
     const lv = e.target.closest('[data-live]');
     if (lv) { liveFocus = null; ficheLive(lv.dataset.live); return; }
+    if (e.target.closest('[data-voirsc]')) { voirScores = !voirScores; rendre(); return; }
     const tr = e.target.closest('[data-tri]');
     if (tr) { triSel = tr.dataset.tri; try { localStorage.setItem('ps_tri', triSel); } catch (err) {} rendre(); return; }
     const n = e.target.closest('[data-niv]');
@@ -756,6 +850,13 @@
       ficheMatch(listeCourante()[+pm.dataset.pm], pm.dataset.pk);
     }
   });
+
+  window.PS_REUSSITE_MAJ = () => {
+    if (!D) return;
+    if (tab === 'pronos' || tab === 'buteurs') rendre();
+    const sh = $('#sheet');
+    if (!$('#veil').classList.contains('hidden') && sh && /Bilan du modèle/.test(sh.textContent)) ficheBilan();
+  };
 
   tab = 'pronos';
   majTabs();
