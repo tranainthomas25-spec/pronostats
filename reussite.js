@@ -95,7 +95,7 @@
         const marqueurs = new Set((m.bt || []).filter(b => b[1] === camp).map(b => b[0]));
         Object.keys(buts).forEach(nom => {
           const b = buts[nom];
-          if (b < 2 || pe.n < 3) return;
+          if (b < 1 || pe.n < 3) return;
           const p = 1 - Math.exp(-Math.min(1.1, (b / (pe.n + 3)) * f));   // même formule que l'onglet Buteurs
           const ok = marqueurs.has(nom);
           const tr = TRANCHES.filter(x => p >= x[0]).pop();
@@ -149,7 +149,29 @@
     setTimeout(() => { calculer(); pret = true; notifier(); }, 50);
   }
 
+  /* Tous les buteurs de la saison des championnats principaux (pour l'onglet Buteurs) */
+  let jCache = null, jCle = '';
+  function joueurs() {
+    const st = lire(), cle = String(st.t || 0);
+    if (jCache && jCle === cle) return jCache;
+    const out = [];
+    Object.keys(PRINC).forEach(code => {
+      if (!st[code]) return;
+      const comp = PRINC[code][0], eq = {}, bt = {};
+      Object.values(st[code].e).forEach(x => {
+        if (x[1] !== 'F' || x[4] == null) return;
+        [[x[2], x[4]], [x[3], x[5]]].forEach(([n, g]) => { const o = eq[n] = eq[n] || { j: 0, b: 0 }; o.j++; o.b += g; });
+        (x[6] || []).forEach(([nom, c, pen]) => { const e = c === 'h' ? x[2] : x[3], k = e + '|' + nom;
+          const o = bt[k] = bt[k] || { comp: comp, equipe: e, joueur: nom, buts: 0, pen: 0, sansPd: true, src: 'espn' }; o.buts++; o.pen += pen; });
+      });
+      Object.values(bt).forEach(o => { const t = eq[o.equipe]; o.matchs = o.tj = t.j; o.tb = t.b; out.push(o); });
+    });
+    jCache = out; jCle = cle;
+    return out;
+  }
+
   window.PS_REUSSITE = {
+    joueurs: joueurs,
     scores: scores, somme: somme, SEUIL_B: SEUIL_B,
     get pret() { return pret; },
     get data() { return resultat; },

@@ -187,21 +187,79 @@
     return out.sort((a, b) => (faible(a.x) - faible(b.x)) || (b.p - a.p));
   }
 
-  /** Buteurs probables : taux de buts du joueur × (buts attendus de son équipe / moyenne de l'équipe). */
+  /** Buteurs probables : buts du joueur dans TOUTES les compétitions de son équipe (championnat + coupes d'Europe),
+      rapportés à la moyenne de buts de l'équipe dans chaque compétition, × buts attendus de son équipe dans ce match.
+      Tous les buteurs de la saison sont pris (ESPN complète la liste de la feuille Google). */
+  const FEM = /f[ée]minin|arkema|women|wsl|\bw\b/i;
+  let poolCache = null, poolCle = '', poolD = null, jmCache = new WeakMap();
+  function poolJoueurs() {
+    const R = window.PS_REUSSITE, ex = R && R.joueurs ? R.joueurs() : [];
+    const cle = (D.maj || '') + '|' + (D.buteurs || []).length + '|' + ex.length + '|' + (D.classements || []).length;
+    if (poolCache && poolCle === cle && poolD === D) return poolCache;
+    const pool = (D.buteurs || []).slice(), deja = new Set(pool.map(b => b.comp + '|' + b.equipe + '|' + norm(b.joueur)));
+    const parComp = {};
+    (D.classements || []).forEach(c => (parComp[c.comp] = parComp[c.comp] || []).push(c.equipe));
+    const nomEq = {}, noms = {};   // noms des joueurs de la feuille Google, par équipe
+    pool.forEach(b => (noms[norm(b.equipe)] = noms[norm(b.equipe)] || new Set()).add(b.joueur));
+    const canon = (eq, j) => {   // « Rômulo » (ESPN) = « Romulo Cruz » (feuille Google)
+      const nj = norm(j), tj = nj.split(' ').filter(t => t.length > 3);
+      for (const n of (noms[norm(eq)] || [])) { const nn = norm(n); if (nn === nj || tj.some(t => nn.split(' ').indexOf(t) >= 0)) return n; }
+      return j;
+    };
+    ex.forEach(b => {   // nom ESPN -> nom de l'équipe dans le classement de la même compétition
+      const k = b.comp + '|' + b.equipe;
+      if (!(k in nomEq)) {
+        let best = b.equipe, bs = 0;
+        (parComp[b.comp] || []).forEach(n => { const sc = proche(b.equipe, [n]); if (sc > bs) { bs = sc; best = n; } });
+        nomEq[k] = bs >= 1.5 ? best : b.equipe;
+      }
+      const eq = nomEq[k], jn = canon(eq, b.joueur), kk = b.comp + '|' + eq + '|' + norm(jn);
+      if (deja.has(kk)) return;
+      deja.add(kk);
+      pool.push(Object.assign({}, b, { equipe: eq, joueur: jn }));
+    });
+    poolCache = pool; poolCle = cle; poolD = D; jmCache = new WeakMap();
+    return pool;
+  }
   function joueursMatch(x) {
-    const B = D.buteurs || [], out = [];
+    if (!D) return [];
+    const pool = poolJoueurs();
+    if (jmCache.has(x)) return jmCache.get(x);
+    const out = [], fem = FEM.test(x.comp);
     [[x.dom, x.lD], [x.ext, x.lE]].forEach(([eq, lam]) => {
-      const cl = (D.classements || []).find(c => c.comp === x.comp && c.equipe === eq);
-      const moy = cl && cl.j ? cl.bp / cl.j : null;
-      if (!lam || !moy) return;
-      const f = lam / moy;
-      B.filter(b => b.comp === x.comp && b.equipe === eq && b.matchs >= 3).forEach(b => {
-        const pd = b.pd || 0;
-        out.push({ joueur: b.joueur, equipe: eq, buts: b.buts, pd: pd, matchs: b.matchs, pen: b.pen,
-          p: b.buts >= 2 ? 1 - Math.exp(-Math.min(b.sansPd ? 1.1 : 1.5, (b.buts / (b.matchs + (b.sansPd ? 3 : 0))) * f)) : null,
-          pdec: !b.sansPd && b.buts + pd >= 3 ? 1 - Math.exp(-Math.min(2, ((b.buts + pd) / b.matchs) * f)) : null });
+      if (!lam) return;
+      const ne = norm(eq);
+      const E = pool.filter(b => FEM.test(b.comp) === fem && (b.equipe === eq || norm(b.equipe) === ne));
+      if (!E.length) return;
+      const nomEquipe = {};   // compétition -> nom de l'équipe dans cette compétition
+      E.forEach(b => nomEquipe[b.comp] = b.equipe);
+      const comps = {};
+      Object.keys(nomEquipe).forEach(c => {
+        const cl = (D.classements || []).find(r => r.comp === c && r.equipe === nomEquipe[c]);
+        const e1 = E.find(b => b.comp === c && b.tj);
+        const j = cl && cl.j ? cl.j : e1 ? e1.tj : null, bp = cl && cl.j ? cl.bp : e1 ? e1.tb : null;
+        if (j && bp) comps[c] = { j: j, moy: bp / j };
+      });
+      const parJ = {};
+      E.forEach(b => { if (!comps[b.comp]) return; const k = norm(b.joueur); (parJ[k] = parJ[k] || {})[b.comp] = parJ[k][b.comp] && !parJ[k][b.comp].sansPd ? parJ[k][b.comp] : b; });
+      Object.values(parJ).forEach(pc => {
+        let part = 0, m = 0, mVu = 0, buts = 0, pd = 0, pen = 0, partD = 0, mD = 0, sansPd = true, nom = '';
+        Object.keys(pc).forEach(c => {
+          const b = pc[c], mo = comps[c].moy;
+          nom = nom || b.joueur;
+          if (!b.sansPd && b.joueur.length > nom.length) nom = b.joueur;
+          part += b.buts / mo; m += b.matchs; mVu += b.matchs; buts += b.buts; pen += b.pen || 0;
+          if (!b.sansPd) { sansPd = false; pd += b.pd || 0; partD += (b.buts + (b.pd || 0)) / mo; mD += b.matchs; }
+        });
+        Object.keys(comps).forEach(c => { if (!pc[c]) m += 0.5 * comps[c].j; });   // compétition jouée sans but de sa part : on freine
+        if (mVu < 2 || !buts) return;
+        const p = 1 - Math.exp(-Math.min(sansPd ? 1.1 : 1.5, lam * part / (m + (sansPd ? 3 : 1))));
+        const pdec = !sansPd && buts + pd >= 2 && mD >= 3 ? 1 - Math.exp(-Math.min(2, lam * partD / (mD + 1))) : null;
+        if (p < 0.05) return;
+        out.push({ joueur: nom, equipe: eq, buts: buts, pd: pd, matchs: mVu, pen: pen, p: p, pdec: pdec, nc: Object.keys(pc).length });
       });
     });
+    jmCache.set(x, out);
     return out;
   }
   const buteursMatch = x => joueursMatch(x).filter(j => j.p != null).sort((a, b) => b.p - a.p);
@@ -236,7 +294,7 @@
     const top = [];
     parMatch.forEach(m => m.j.forEach(b => { if (b[cle] >= SEUIL_B) top.push(Object.assign({ x: m.x, i: m.i }, b)); }));
     top.sort((a, b) => b[cle] - a[cle]);
-    const stat = b => dec ? `${b.buts} buts + ${b.pd} passes en ${b.matchs} matchs` : `${b.buts} buts en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''}`;
+    const stat = b => (dec ? `${b.buts} buts + ${b.pd} passes en ${b.matchs} matchs` : `${b.buts} but${b.buts > 1 ? 's' : ''} en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''}`) + (b.nc > 1 ? ' (toutes compét.)' : '');
     let h = jours + modes + resumeReuB(dec) + chips(comps, compP, 'pcomp');
     h += `<h2 class="secth">🔥 ${dec ? 'Les décisifs' : 'Les buteurs'} de 32 % à 100 % <small>${top.length} joueur${top.length > 1 ? 's' : ''}</small></h2>`;
     if (!top.length) h += `<div class="empty">Aucun joueur au-dessus de 32 % pour ces matchs.<br>Regarde le détail par match juste en dessous.</div>`;
@@ -254,10 +312,10 @@
     avec.forEach(m => {
       const x = m.x;
       const col = eq => {
-        const js = m.j.filter(b => b.equipe === eq);
+        const js = m.j.filter(b => b.equipe === eq).slice(0, 8);
         return `<div style="min-width:0"><div class="m" style="font-weight:700;margin-bottom:4px">${esc(eq)}</div>${js.length ? js.map(b => `
           <div class="pk" data-pm="${m.i}" data-pk="${esc(pref + b.joueur)}" style="grid-template-columns:1fr auto;gap:8px;padding:6px 0;border-top:1px solid var(--line)">
-            <div style="min-width:0"><div class="s" style="font-size:14px">${esc(b.joueur)}</div><div class="m">${dec ? b.buts + ' b. + ' + b.pd + ' p.' : b.buts + ' buts'} en ${b.matchs} m.</div></div>
+            <div style="min-width:0"><div class="s" style="font-size:14px">${esc(b.joueur)}</div><div class="m">${dec ? b.buts + ' b. + ' + b.pd + ' p.' : b.buts + ' but' + (b.buts > 1 ? 's' : '')} en ${b.matchs} m.${b.nc > 1 ? ' (toutes compét.)' : ''}</div></div>
             <b style="white-space:nowrap;${b[cle] >= SEUIL_B ? 'color:var(--win)' : ''}">${pct(b[cle])} %</b></div>`).join('') : '<div class="m">—</div>'}</div>`;
       };
       h += `<div class="card" style="margin-bottom:10px">
@@ -334,7 +392,7 @@
           <span class="md ${k > 2 ? 'n' : ''}">${['🥇', '🥈', '🥉'][k] || '#' + (k + 1)}</span>
           <div style="min-width:0"><div class="s">${esc(b.joueur)}</div>
             <div class="m">${esc(b.equipe)} · ${esc(b.x.dom)} – ${esc(b.x.ext)} · ${heure(b.x.date)}</div>
-            <div class="m">${b.buts} buts en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''} · cote juste ${cote(b.p)}</div>
+            <div class="m">${b.buts} but${b.buts > 1 ? 's' : ''} en ${b.matchs} matchs${b.pen ? ' (dont ' + b.pen + ' pén.)' : ''}${b.nc > 1 ? ' (toutes compét.)' : ''} · cote juste ${cote(b.p)}</div>
             <div class="bar"><i style="width:${pct(b.p)}%"></i></div></div>
           ${ring(b.p, true)}</div>`).join('')}</div>`;
     }
@@ -530,7 +588,7 @@
       <div>${['MT:1', 'MT:N', 'MT:2'].map(ligne).join('')}</div>` : ''}
       ${bts.length ? `<label style="margin-top:16px">⚽ Buteurs possibles (touche pour tester)</label>
       <div>${bts.slice(0, 10).map(b => ligne('B:' + b.joueur)).join('')}</div>
-      <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilités s'il est titulaire, d'après ses buts (et passes) de la saison et les buts attendus de son équipe.</div>` : ''}
+      <div style="color:var(--muted);font-size:11.5px;margin-top:6px">Probabilités s'il est titulaire, d'après ses buts (et passes) de la saison dans toutes les compétitions et les buts attendus de son équipe.</div>` : ''}
       ${dcs.length ? `<label style="margin-top:16px">⚡ Joueurs décisifs · but ou passe (touche pour tester)</label>
       <div>${dcs.slice(0, 10).map(b => ligne('P:' + b.joueur)).join('')}</div>` : ''}
       <label style="margin-top:16px">Tous les marchés (touche pour tester)</label>
