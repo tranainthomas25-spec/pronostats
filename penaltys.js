@@ -103,8 +103,12 @@
     }
     if (!liste.length) h += `<div class="empty">Aucun match de Coupe d'Europe avec arbitre désigné pour l'instant.<br><small>Les arbitres sont annoncés 1 à 3 jours avant.</small></div>`;
     else {
-      h += `<h2 class="secth">Penalty potentiel<small>du plus probable au moins probable</small></h2>`;
-      h += liste.sort((a, c) => c.proba - a.proba).map(x => carte(x, x._i)).join('');
+      const groupes = new Map();
+      liste.slice().sort((a, c) => Date.parse(a.date) - Date.parse(c.date) || c.proba - a.proba).forEach(x => {
+        const k = (jourK === 'tous' ? nomJour(jourDe(x.date)) + ' · ' : '') + heure(x.date);
+        if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(x);
+      });
+      groupes.forEach((g, k) => { h += `<h2 class="secth">⏱ ${esc(k)}<small>${g.length} match(s) · du plus probable au moins probable</small></h2>` + g.map(x => carte(x, x._i)).join(''); });
     }
 
     const cl = A.classement || [];
