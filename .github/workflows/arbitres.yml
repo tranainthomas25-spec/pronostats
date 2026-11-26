@@ -1,0 +1,28 @@
+name: Arbitres et penalties
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+    - cron: '23 13 * * *'
+    - cron: '41 16 * * 2,3,4'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  maj:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Calcul des stats d'arbitres
+        run: node outils/arbitres.mjs
+      - name: Enregistrer arbitres.json
+        run: |
+          git config user.name "pronostats-bot"
+          git config user.email "pronostats-bot@users.noreply.github.com"
+          git add arbitres.json
+          git diff --cached --quiet || (git commit -m "Mise à jour des stats d'arbitres" && git push)
