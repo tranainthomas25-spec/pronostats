@@ -159,7 +159,7 @@
       <div style="color:var(--muted);margin-top:-8px">${esc(x.comp)} · ${nomJour(jourDe(x.date))} ${heure(x.date)}</div>
       <div class="pn-big" style="margin-top:12px"><div><b>${pct(x.proba)} %</b><small>au moins 1 penalty</small></div><div><b>${pct(x.penDom)} %</b><small>pour ${esc(x.dom)}</small></div><div><b>${pct(x.penExt)} %</b><small>pour ${esc(x.ext)}</small></div></div>
       <h4>Arbitre</h4>
-      ${a ? `<div class="pn-row"><span>${esc(a.nom)} (${esc(a.pays)})<span class="fb ${x.fiab}">${x.fiab}</span></span><span class="v">${a.n ? dec(a.taux) : '–'}</span><small>${a.pens} penalties en ${a.n} ${ou} (${x.ligue ? '2 saisons' : '3 saisons'}) · taux retenu après prudence : ${dec(a.lisse)}</small></div>
+      ${a ? `<div class="pn-row"><span>${esc(a.nom)} (${esc(a.pays)})<span class="fb ${x.fiab}">${x.fiab}</span></span><span class="v">${a.n ? dec(a.taux) : '–'}</span><small>${a.pens} penalties en ${a.n} ${ou} (${x.ligue ? 'saisons 2022 à 2024' : '3 saisons'}) · taux retenu après prudence : ${dec(a.lisse)}</small></div>
         ${(a.hist || []).map(m => `<div class="pn-row"><span style="font-size:13px">${esc(m.m)}</span><span class="v ${m.p ? 'oui' : 'non'}">${m.p ? m.p + ' péno' : '0'}</span><small>${esc(m.c)} · ${new Date(m.d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })}</small></div>`).join('')}`
         : `<div class="pn-row"><span>Pas encore désigné</span></div>`}
       <h4>VAR</h4>
