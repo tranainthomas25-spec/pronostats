@@ -45,6 +45,23 @@ try {
 let budget = reste - RESERVE;
 if (budget < 3) { console.log('Quota presque épuisé : on garde les données d\'hier.'); process.exit(0); }
 
+// ---------- 2b. Matchs des prochains jours (avec arbitre), même sans accès à la saison ----------
+for (let j = 0; j < 4 && budget > 0; j++) {
+  const jour = new Date(Date.now() + j * 864e5).toISOString().slice(0, 10);
+  try {
+    const liste = await api(`fixtures?date=${jour}&timezone=Europe/Paris`); budget--;
+    let n = 0;
+    for (const f of liste) {
+      if (!LIGUES[f.league?.id]) continue;
+      const id = String(f.fixture.id), old = C.matchs[id] || {};
+      C.matchs[id] = { lg: f.league.id, s: f.league.season, d: f.fixture.date, st: f.fixture.status?.short, ref: f.fixture.referee || old.ref || null,
+        h: f.teams.home.name, a: f.teams.away.name, hid: f.teams.home.id, aid: f.teams.away.id, p: old.p, futur: true };
+      n++;
+    }
+    console.log(`Matchs du ${jour} : ${n} dans les 5 championnats (${liste.filter(f => LIGUES[f.league?.id] && f.fixture.referee).length} avec arbitre)`);
+  } catch (e) { console.log(`Matchs du ${jour} refusés :`, e.message); }
+}
+
 // ---------- 2. Listes de matchs (arbitre inclus) ----------
 const sansAcc = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 function refInfo(raw) {
@@ -75,23 +92,6 @@ for (const lg of Object.keys(LIGUES)) for (const s of SAISONS) {
     console.log(`${LIGUES[lg]} ${s} refusé :`, e.message);
     if (e.det && (e.det.plan || e.det.season)) C.ko[cle] = { jour: AUJ, msg: e.message };
   }
-}
-
-// ---------- 2b. Matchs des prochains jours (avec arbitre), même sans accès à la saison ----------
-for (let j = 0; j < 4 && budget > 0; j++) {
-  const jour = new Date(Date.now() + j * 864e5).toISOString().slice(0, 10);
-  try {
-    const liste = await api(`fixtures?date=${jour}&timezone=Europe/Paris`); budget--;
-    let n = 0;
-    for (const f of liste) {
-      if (!LIGUES[f.league?.id]) continue;
-      const id = String(f.fixture.id), old = C.matchs[id] || {};
-      C.matchs[id] = { lg: f.league.id, s: f.league.season, d: f.fixture.date, st: f.fixture.status?.short, ref: f.fixture.referee || old.ref || null,
-        h: f.teams.home.name, a: f.teams.away.name, hid: f.teams.home.id, aid: f.teams.away.id, p: old.p, futur: true };
-      n++;
-    }
-    console.log(`Matchs du ${jour} : ${n} dans les 5 championnats (${liste.filter(f => LIGUES[f.league?.id] && f.fixture.referee).length} avec arbitre)`);
-  } catch (e) { console.log(`Matchs du ${jour} refusés :`, e.message); }
 }
 
 // ---------- 3. Penalties des matchs terminés (20 matchs par requête) ----------
