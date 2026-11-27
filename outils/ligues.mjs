@@ -9,11 +9,12 @@ const BASE = 'https://v3.football.api-sports.io/';
 const LIGUES = { 61: 'Ligue 1', 39: 'Premier League', 140: 'Liga', 135: 'Serie A', 78: 'Bundesliga' };
 const now = new Date();
 const SAISON = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1; // 2026/27 -> 2026
-const SAISONS = [SAISON, SAISON - 1];
+const SAISONS = [SAISON, SAISON - 1, 2024, 2023, 2022]; // la formule gratuite n'ouvre que 2022-2024 : historique
+const AUJ = new Date().toISOString().slice(0, 10);
 const RESERVE = 15;                  // requêtes laissées libres pour d'autres usages
-const MAX_LOTS = 14;                 // lots de 20 matchs par passage au maximum
+const MAX_LOTS = 45;                 // lots de 20 matchs par passage au maximum
 const JOURS = 8;
-const K_ARB = 12, K_EQ = 10, POIDS_EQ = 0.6;
+const K_ARB = 12, K_EQ = 15, POIDS_EQ = 0.45;
 const CACHE = 'ligues-cache.json';
 const FINI = ['FT', 'AET', 'PEN'];
 
@@ -37,6 +38,7 @@ let reste = 100;
 try {
   const st = await api('status');
   const q = (st && st.requests) || {};
+  console.log('Formule :', st && st.subscription && st.subscription.plan);
   reste = (q.limit_day || 100) - (q.current || 0);
   console.log(`Quota API-Football : ${q.current}/${q.limit_day} utilisées aujourd'hui`);
 } catch (e) { console.log('Statut illisible :', e.message); }
@@ -54,7 +56,7 @@ function refInfo(raw) {
 }
 for (const lg of Object.keys(LIGUES)) for (const s of SAISONS) {
   const cle = lg + '-' + s;
-  if (C.ko[cle]) continue;
+  if (C.ko[cle] && Date.now() - Date.parse(C.ko[cle].jour || 0) < 7 * 864e5) continue; // refusé : on réessaie chaque semaine (au cas où la formule change)
   if (s !== SAISON && C.listes[cle]) continue;          // saison passée déjà complète
   if (budget < 1) break;
   try {
@@ -67,15 +69,33 @@ for (const lg of Object.keys(LIGUES)) for (const s of SAISONS) {
       if (FINI.includes(f.fixture.status?.short)) finis++;
     }
     if (s !== SAISON && finis >= liste.length - 2) C.listes[cle] = true;
+    delete C.ko[cle];
     console.log(`${LIGUES[lg]} ${s}/${s + 1} : ${liste.length} matchs`);
   } catch (e) {
     console.log(`${LIGUES[lg]} ${s} refusé :`, e.message);
-    if (e.det && (e.det.plan || e.det.season)) C.ko[cle] = e.message;
+    if (e.det && (e.det.plan || e.det.season)) C.ko[cle] = { jour: AUJ, msg: e.message };
   }
 }
 
+// ---------- 2b. Matchs des prochains jours (avec arbitre), même sans accès à la saison ----------
+for (let j = 0; j < 4 && budget > 0; j++) {
+  const jour = new Date(Date.now() + j * 864e5).toISOString().slice(0, 10);
+  try {
+    const liste = await api(`fixtures?date=${jour}&timezone=Europe/Paris`); budget--;
+    let n = 0;
+    for (const f of liste) {
+      if (!LIGUES[f.league?.id]) continue;
+      const id = String(f.fixture.id), old = C.matchs[id] || {};
+      C.matchs[id] = { lg: f.league.id, s: f.league.season, d: f.fixture.date, st: f.fixture.status?.short, ref: f.fixture.referee || old.ref || null,
+        h: f.teams.home.name, a: f.teams.away.name, hid: f.teams.home.id, aid: f.teams.away.id, p: old.p, futur: true };
+      n++;
+    }
+    console.log(`Matchs du ${jour} : ${n} dans les 5 championnats (${liste.filter(f => LIGUES[f.league?.id] && f.fixture.referee).length} avec arbitre)`);
+  } catch (e) { console.log(`Matchs du ${jour} refusés :`, e.message); }
+}
+
 // ---------- 3. Penalties des matchs terminés (20 matchs par requête) ----------
-const aFaire = Object.entries(C.matchs).filter(([, m]) => FINI.includes(m.st) && !Array.isArray(m.p))
+const aFaire = Object.entries(C.matchs).filter(([, m]) => FINI.includes(m.st) && !Array.isArray(m.p) && !m.futur)
   .sort((x, y) => Date.parse(y[1].d) - Date.parse(x[1].d)).map(([id]) => id);
 let lots = 0;
 while (aFaire.length && budget > 0 && lots < MAX_LOTS) {
@@ -155,7 +175,7 @@ const classement = [...arb.values()].filter(a => a.n >= 8)
 const nomsBases = {}; for (const [lg, b] of Object.entries(bases)) nomsBases[LIGUES[lg]] = b;
 writeFileSync('ligues.json', JSON.stringify({
   maj: new Date().toISOString(),
-  source: 'API-Football – 5 grands championnats',
+  source: 'API-Football – 5 grands championnats (historique ' + Object.keys(C.listes).map(k => k.split('-')[1]).filter((v, i, a) => a.indexOf(v) === i).sort().join(', ') + ')',
   bases: nomsBases, enAttente: aFaire.length, refus: C.ko,
   prochains, recents, classement,
 }));
